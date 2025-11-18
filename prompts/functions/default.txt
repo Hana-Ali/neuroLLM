@@ -1,0 +1,24 @@
+
+    You are an expert in neuroscience literature analysis. Your task is to
+    list out the top 5 functions that region region **{region}**
+    {hemisphere_part} **{species}** brain is involved in.
+
+    These functions should be based on a simulated review of neuroscience
+    literature, reflecting how frequently these functions are associated with
+    this brain region across **peer-reviewed** studies, textbooks, and
+    reputable sources.
+
+    ### Guidelines
+    1. Consider only **{species}**-specific neuroscience literature. Do **not**
+    use data from other species.
+    2. **DO NOT** provide explanations, citations, or any extra text—**return
+    only the function names**.
+    3. Return your results as a list: [function_1, function_2, function_3,
+    function_4, function_5]
+    4. **DO NOT** repeat functions in your list.
+    5. List out the functions **only** for the specified {hemisphere_part}
+    hemisphere.
+
+    ### Expected Output Format
+    [function_1, function_2, function_3, function_4, function_5]
+    

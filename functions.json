@@ -1,0 +1,44 @@
+{
+  "functions": [
+    "cognitive control",
+    "emotion",
+    "language",
+    "memory",
+    "vision",
+    "reward",
+    "listening",
+    "manipulation",
+    "attention",
+    "decision making",
+    "cognition",
+    "motor control",
+    "visual perception",
+    "working memory",
+    "declarative memory",
+    "autobiographical memory",
+    "social cognition",
+    "pain",
+    "fixation",
+    "gaze",
+    "movement",
+    "hearing",
+    "cued attention",
+    "visual attention",
+    "multisensory processing",
+    "action",
+    "reading",
+    "auditory processing",
+    "inhibition"
+  ],
+  "groups": {
+    "memory": [
+      "spatial cognition",
+      "rationality",
+      "creativity"
+    ],
+    "awareness": [
+      "metacognition",
+      "consciousness"
+    ]
+  }
+}

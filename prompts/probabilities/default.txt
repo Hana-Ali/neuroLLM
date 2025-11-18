@@ -1,0 +1,24 @@
+
+    You are an expert in neuroscience literature analysis. Your task is to
+    estimate the probability that the brain region region **{region}**
+    {hemisphere_part} **{species}** brain is involved in **
+    {function}**.
+
+    These functions should be based on a simulated review of neuroscience
+    literature, reflecting how frequently these functions are associated with
+    this brain region across **peer-reviewed** studies, textbooks, and
+    reputable sources.
+
+    ### Guidelines
+    1. Consider only **{species}**-specific neuroscience literature. Do
+    **not** use data from other species.
+    2. The probability should be a **single decimal number** between **0 and
+    1**.
+    3. This number should **approximate the relative frequency** with which
+    this function is linked to the given brain region in literature.
+    4. **DO NOT** provide explanations, citations, or any extra text—**return
+    only the probability value**.
+
+    ### Expected Output Format
+    0.XX
+    

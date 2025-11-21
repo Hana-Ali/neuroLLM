@@ -55,6 +55,29 @@ DEFAULT_TEMPLATES = {
 }
 
 
+PROVIDER_CONFIGS = {
+    "openai": {
+        "env_key": "OPENAI_API_KEY",
+        "requires_client": True,
+    },
+    "claude": {
+        "env_key": "CLAUDE_API_KEY",
+        "requires_client": True,
+    },
+    "gemini": {
+        "env_key": "GEMINI_API_KEY",
+        "requires_client": True,
+    },
+    "together": {
+        "env_key": "TOGETHERAI_API_KEY",
+        "requires_client": True,
+    },
+    "dummy": {
+        "env_key": None,
+        "requires_client": False,
+    },
+}
+
 MODEL_CONFIGS = {
     "openai": {
         "provider": "openai",

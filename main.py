@@ -19,31 +19,27 @@ def main():
     """Main LLM brain analysis script"""
     args = parse_args()
 
+    # Determine models to use based on command
+    models_input = "dummy" if args.command == "test" else args.models
+
     # Initialize API clients
     logger.info("Initializing API clients...")
-    client_manager = APIClientManager()
+    client_manager = APIClientManager(models=models_input)
 
     try:
-        client_manager.init_clients()
+        model_names, _ = client_manager.init_clients()
+        logger.info(f"Using models: {', '.join(model_names)}")
     except Exception as e:
         logger.error_status(
             f"Failed to initialize API clients: {e}", exc_info=True
         )
         sys.exit(1)
 
-    # Handle model selection based on command
-    if args.command == "test":
-        models = ["dummy"]
-        logger.info("Using models: dummy (test mode)")
-    else:
-        models = APIClientManager.get_models_by_category(category=args.models)
-        logger.info(f"Using models: {', '.join(models)}")
-
-    # Create base config as SimpleNamespace (allows dot notation access)
+    # Create base config as SimpleNamespace
     config = SimpleNamespace(
         species=args.species,
         regions=args.regions.split(",") if args.regions else None,
-        models=models,
+        models=model_names,
         functions=None,  # To be set later for probabilities
         workers=1 if args.command == "test" else args.workers,
         skip_visualization=args.skip_visualization,

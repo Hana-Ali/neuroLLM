@@ -3,7 +3,7 @@ import time
 import random
 from dotenv import load_dotenv
 
-from typing import Dict, List, Callable
+from typing import Dict, List, Callable, Tuple, Any
 
 import openai
 import anthropic
@@ -13,21 +13,118 @@ from together import Together
 from utils.misc.logging_setup import logger
 
 from utils.paths.base import DEFAULT_PATHS
-from utils.misc.variables import MODEL_CONFIGS
+from utils.misc.variables import MODEL_CONFIGS, PROVIDER_CONFIGS
 
 
 class APIClientManager:
     """Manages multiple API clients for different LLM providers"""
 
-    def __init__(self):
+    def __init__(self, models: str = "all"):
+        """
+        Args:
+            * models (str): Comma-separated list of model names to use OR
+                category of models ('all', 'all-excl-dummy', 'paid', 'dummy')
+                (default: 'all')
+        """
+        self.models: str = models
         self.clients: Dict[str, Callable] = {}
-        self.client_names: List[str] = []
-        self.free_models: List[str] = []
-        self.paid_models: List[str] = []
-        self.all_models: List[str] = []
-        self.initialized = False
+    
+    def init_clients(self) -> bool:
+        """
+        Initialize API clients for all providers
 
-    def load_api_keys(self) -> Dict[str, str]:
+        Raises:
+            * Exception if any client fails to initialize
+        """
+
+        # Load API keys
+        api_keys = self._load_api_keys()
+
+        # Get the providers needed for the selected models
+        model_names, providers = self.get_models_info()
+
+        # Ensure that we have correct API keys for the selected providers
+        self._check_api_keys_present(providers=providers, api_keys=api_keys)
+        
+        # Initialize clients for each provider that's needed
+        try:
+            for provider in set(providers):
+                if not PROVIDER_CONFIGS[provider]["requires_client"]:
+                    continue  # Skip dummy
+                
+                # Initialize the client
+                api_key = api_keys[provider]
+                self.clients[provider] = self._init_provider_client(
+                    provider=provider, api_key=api_key
+                )
+                logger.info(f"Initialized {provider} client")
+        except Exception as e:
+            logger.error_status(
+                f"Failed to initialize clients: {str(e)}", exc_info=True
+            )
+            raise
+        
+        return model_names, providers
+
+    
+    def _init_provider_client(self, provider: str, api_key: str) -> Any:
+        """
+        Initialize a client for a specific provider
+
+        Args:
+            * provider: Provider name
+            * api_key: API key for the provider
+
+        Returns:
+            Initialized client object
+        """
+        initializers = {
+            "openai": lambda: setattr(openai, 'api_key', api_key) or openai,
+            "claude": lambda: anthropic.Anthropic(api_key=api_key),
+            "gemini": lambda: genai.Client(api_key=api_key),
+            "together": lambda: Together(api_key=api_key),
+        }
+        
+        if provider not in initializers:
+            raise ValueError(f"No initializer found for provider: {provider}")
+        
+        return initializers[provider]()
+
+    def get_models_info(self)-> Tuple[List[str], List[str]]:
+        """
+        Get model names and providers
+
+        Returns:
+            * Tuple of model names and their providers
+        """
+
+        if self.models == "all":
+            names = list(MODEL_CONFIGS.keys())
+        elif self.models == "all-excl-dummy":
+            names = [
+                name
+                for name, config in MODEL_CONFIGS.items()
+                if config["category"] != "dummy"
+            ]
+        elif self.models in ["paid", "dummy"]:
+            names = [
+                name
+                for name, config in MODEL_CONFIGS.items()
+                if config["category"] == self.models
+            ]
+        else:
+            # Comma-separated list of model names
+            names = [model.strip() for model in self.models.split(",")]
+        
+        # Provider always retrieved the same, irrespective of category
+        providers = [
+            MODEL_CONFIGS[name]["provider"] for name in names
+        ]
+        
+        return names, providers
+
+
+    def _load_api_keys(self) -> Dict[str, str]:
         """
         Load API keys from environment variables or .env file
 
@@ -52,62 +149,40 @@ class APIClientManager:
             )
             raise
 
-        # Get the API keys from environment variables
+        # Get the API keys from environment variables using the provider config
         api_keys = {
-            "openai": os.environ.get("OPENAI_API_KEY"),
-            "claude": os.environ.get("CLAUDE_API_KEY"),
-            "gemini": os.environ.get("GEMINI_API_KEY"),
-            "together": os.environ.get("TOGETHERAI_API_KEY"),
+            provider: os.environ.get(config["env_key"])
+            for provider, config in PROVIDER_CONFIGS.items()
+            if config["env_key"] is not None
         }
-
-        # Log which keys were found
-        for provider, key in api_keys.items():
-            if key:
-                logger.info(f"Found API key for {provider}")
-            else:
-                logger.error(f"No API key found for {provider}")
-                raise
 
         return api_keys
 
-    def init_clients(self) -> bool:
+    def _check_api_keys_present(
+        self, providers: List[str], api_keys: Dict[str, str]
+    ) -> bool:
         """
-        Initialize API clients for all providers
+        Check if all required API keys are present in environment variables
 
-        Raises:
-            * Exception if any client fails to initialize
+        Args:
+            * providers (list): List of provider names
+            * api_keys (dict): Dictionary of API keys
+
+        Returns:
+            * Exception if any required API key is missing
         """
 
-        # Load API keys
-        api_keys = self.load_api_keys()
-        if not api_keys:
-            logger.error("No API keys found. Cannot initialize clients")
-            raise
-
-        try:
-            # OpenAI
-            openai.api_key = api_keys["openai"]
-            self.clients["openai"] = openai
-            logger.info("Initialized openai client")
-
-            # Claude
-            client = anthropic.Anthropic(api_key=api_keys["claude"])
-            self.clients["claude"] = client
-            logger.info("Initialized claude client")
-
-            # Gemini
-            self.clients["gemini"] = genai.Client(api_key=api_keys["gemini"])
-            logger.info("Initialized gemini client")
-
-            # Together
-            self.clients["together"] = Together(api_key=api_keys["together"])
-            logger.info("Initialized together client")
-
-        except Exception as e:
-            logger.error_status(
-                f"Failed to initialize clients: {str(e)}", exc_info=True
-            )
-            raise
+        # For each provider, check if the API key is present
+        for provider in set(providers):
+            provider_config = PROVIDER_CONFIGS.get(provider)
+            
+            # Only check for API key if the provider requires a client
+            if (
+                provider_config["requires_client"]
+                and not api_keys.get(provider)
+            ):
+                logger.error(f"Missing API key for provider: {provider}")
+                raise ValueError(f"Missing API key for provider: {provider}")
 
     def query_model(self, model_name: str, prompt: str) -> str:
         """
@@ -152,29 +227,25 @@ class APIClientManager:
         Returns:
             * The result from the function
         """
-        retries = 0
-        while True:
+        for attempt in range(1, max_retries + 1):
             try:
                 return func(*args)
             except Exception as e:
-                retries += 1
-                if retries > max_retries:
+                if attempt >= max_retries:
                     logger.error_status(
-                        (
-                            f"Maximum retries ({max_retries}) exceeded. "
-                            f"Last error: {str(e)}"
-                        ),
+                        f"Maximum retries ({max_retries}) exceeded. "
+                        f"Last error: {str(e)}",
                         exc_info=True,
                     )
                     raise
 
                 # Add jitter to avoid thundering herd
-                delay = initial_delay * (2 ** (retries - 1)) + random.uniform(
+                delay = initial_delay * (2 ** (attempt - 1)) + random.uniform(
                     0, 1
                 )
                 logger.warning_status(
                     f"API error: {str(e)}. Retrying in {delay:.1f}s "
-                    f"(attempt {retries}/{max_retries})..."
+                    f"(attempt {attempt}/{max_retries})..."
                 )
                 time.sleep(delay)
 
@@ -194,30 +265,31 @@ class APIClientManager:
             * response (str): Model response
         """
 
-        if provider == "dummy":
-            return self._query_dummy(prompt)
-        elif provider == "openai":
-            return self.retry_with_backoff(
+        # Map providers to their query functions
+        provider_methods = {
+            "dummy": lambda: self._query_dummy(prompt),
+            "openai": lambda: self.retry_with_backoff(
                 self._query_openai, model_id, prompt
-            )
-        elif provider == "claude":
-            return self.retry_with_backoff(
+            ),
+            "claude": lambda: self.retry_with_backoff(
                 self._query_claude, model_id, prompt
-            )
-        elif provider == "gemini":
-            return self.retry_with_backoff(
+            ),
+            "gemini": lambda: self.retry_with_backoff(
                 self._query_gemini, model_id, prompt
-            )
-        elif provider == "together":
-            return self.retry_with_backoff(
+            ),
+            "together": lambda: self.retry_with_backoff(
                 self._query_together,
                 model_id,
                 prompt,
                 max_retries=7,
                 initial_delay=5,
-            )
-        else:
+            ),
+        }
+
+        if provider not in provider_methods:
             raise ValueError(f"Unknown provider: {provider}")
+
+        return provider_methods[provider]()
 
     def _query_openai(self, model_id: str, prompt: str) -> str:
         """
@@ -324,7 +396,7 @@ class APIClientManager:
             selected = random.sample(functions, 5)
             return f"[{', '.join(selected)}]"
         else:
-            return "This is a dummy response for testing purposes."
+            return "This is a dummy response for testing purposes"
 
     def get_embeddings(self, text: str, model: str) -> List[float]:
         """
@@ -337,13 +409,12 @@ class APIClientManager:
         Returns:
             * Embedding vector as a list of floats
         """
-        # Return a random 3073-dimensional vector (OpenAI's dimension) for
-        # dummy model, else use OpenAI embeddings
-        return (
-            [random.uniform(-1, 1) for _ in range(3073)]
-            if model == "dummy"
-            else self.retry_with_backoff(self._get_openai_embeddings, text)
-        )
+
+        # Return a random 3073-dim vector (OpenAI's dimension) for dummy
+        if model == "dummy":
+            return [random.uniform(-1, 1) for _ in range(3073)]
+
+        return self.retry_with_backoff(self._get_openai_embeddings, text)
 
     def _get_openai_embeddings(self, text: str) -> List[float]:
         """
@@ -360,35 +431,3 @@ class APIClientManager:
             input=text, model="text-embedding-3-large"
         )
         return response.data[0].embedding
-
-    @classmethod
-    def get_models_by_category(self, category: str = "all") -> List[str]:
-        """
-        Get model names by category
-
-        Args:
-            * category (str): Category of models to retrieve
-                ('all', 'all-excl-dummy', 'paid', 'free', 'dummy', or
-                    comma-separated list of model names)
-
-        Returns:
-            * models (list): List of model names
-        """
-
-        if category == "all":
-            return list(MODEL_CONFIGS.keys())
-        elif category == "all-excl-dummy":
-            return [
-                name
-                for name, config in MODEL_CONFIGS.items()
-                if config["category"] != "dummy"
-            ]
-        elif category in ["paid", "free", "dummy"]:
-            return [
-                name
-                for name, config in MODEL_CONFIGS.items()
-                if config["category"] == category
-            ]
-        else:
-            # Comma-separated list of model names
-            return [model.strip() for model in category.split(",")]

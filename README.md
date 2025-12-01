@@ -26,14 +26,14 @@ The framework supports multiple LLM models across different providers:
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
-   cd llm_brain_prompting
+   git clone https://github.com/Hana-Ali/neuroLLM.git
+   cd neuroLLM
    ```
 
 2. Create and activate conda environment:
    ```bash
-   conda create -n llm_neuro python=3.12
-   conda activate llm_neuro
+   conda create -n neuroLLM python=3.12
+   conda activate neuroLLM
    ```
 
 3. Install dependencies:
@@ -59,9 +59,9 @@ atlases/
 ├── human/
 │   └── DesikanKilliany68.csv
 ├── macaque/
-│   └── RM-NMT-Cortex.csv
+│   └── RM_NMT82_.csv
 └── mouse/
-    └── AllenBrainConnectome.csv
+    └── Allen72.csv
 ```
 
 Each CSV should contain region names in the first column

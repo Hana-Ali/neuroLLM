@@ -7,7 +7,7 @@ def parse_args():
 
     # Main command - what to do
     parser.add_argument(
-        "command", choices=["functions", "probabilities", "test"]
+        "command", choices=["top-functions", "query-functions", "test"]
     )
 
     # Essential options
@@ -28,11 +28,11 @@ def parse_args():
     # Functional options
     parser.add_argument(
         "--functions",
-        help="Comma-separated functions (for probabilities command)",
+        help="Comma-separated functions (for query-functions command)",
     )
     parser.add_argument(
         "--function-group",
-        help="Predefined function group to load (for probabilities command)",
+        help="Predefined function group to load (for query-functions command)",
     )
     parser.add_argument("--atlas-name", help="Atlas name", required=True)
 

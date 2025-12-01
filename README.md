@@ -71,7 +71,7 @@ Each CSV should contain region names in the first column
 The tool provides a command-line interface with three main commands:
 
 ```bash
-python main.py {functions|probabilities|test} [OPTIONS]
+python main.py {top-functions|query-functions|test} [OPTIONS]
 ```
 
 ### Commands
@@ -80,14 +80,14 @@ python main.py {functions|probabilities|test} [OPTIONS]
 Identifies top N functions (default N = 5) for brain regions and creates similarity matrices:
 
 ```bash
-python main.py functions [OPTIONS]
+python main.py top-functions [OPTIONS]
 ```
 
 #### Probabilistic Functional Association  
 Calculates probabilities of specific functions being associated with regions:
 
 ```bash
-python main.py probabilities [OPTIONS]
+python main.py query-functions [OPTIONS]
 ```
 
 #### Test Workflow
@@ -124,10 +124,10 @@ python main.py test [OPTIONS]
 
 ```bash
 # Analyze functions for human brain using dummy model
-python main.py functions --atlas-name DesikanKilliany68
+python main.py top-functions --atlas-name DesikanKilliany68
 
 # Analyze probabilities for specific functions
-python main.py probabilities --atlas-name DesikanKilliany68 --functions "spatial cognition,memory,attention"
+python main.py query-functions --atlas-name DesikanKilliany68 --functions "spatial cognition,memory,attention"
 
 # Run test workflow
 python main.py test --atlas-name DesikanKilliany68
@@ -137,16 +137,16 @@ python main.py test --atlas-name DesikanKilliany68
 
 ```bash
 # Use paid models with hemisphere separation
-python main.py functions --atlas-name DesikanKilliany68 --models paid --separate-hemispheres --workers 8
+python main.py top-functions --atlas-name DesikanKilliany68 --models paid --separate-hemispheres --workers 8
 
 # Analyze specific regions only
-python main.py functions --atlas-name DesikanKilliany68 --regions "hippocampus,amygdala,prefrontal cortex"
+python main.py top-functions --atlas-name DesikanKilliany68 --regions "hippocampus,amygdala,prefrontal cortex"
 
 # Use function groups for probabilities
-python main.py probabilities --atlas-name DesikanKilliany68 --function-group memory
+python main.py query-functions --atlas-name DesikanKilliany68 --function-group memory
 
 # Use specific models
-python main.py functions --atlas-name DesikanKilliany68 --models "openai,claude"
+python main.py top-functions --atlas-name DesikanKilliany68 --models "openai,claude"
 ```
 
 ## Model Categories

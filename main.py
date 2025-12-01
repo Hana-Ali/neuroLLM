@@ -52,12 +52,12 @@ def main():
 
     # Run the appropriate command
     try:
-        if args.command == "functions":
+        if args.command == "top-functions":
             logger.info(f"Running functions analysis for {args.species}...")
             analyser = BrainAnalyser(config=config)
             analyser.analyze_functions()
 
-        elif args.command == "probabilities":
+        elif args.command == "query-functions":
             # Get functions for probability analysis
             if args.function_group:
                 functions = load_function_group(group_name=args.function_group)
@@ -106,7 +106,7 @@ def main():
         else:
             logger.error_status(
                 f"Unknown command: {args.command}, please use from available "
-                "commands: functions, probabilities, test"
+                "commands: top-functions, query-functions, test"
             )
             sys.exit(1)
 

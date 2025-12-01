@@ -76,14 +76,14 @@ python main.py {functions|probabilities|test} [OPTIONS]
 
 ### Commands
 
-#### Functions Analysis
-Identifies top 5 functions for brain regions and creates similarity matrices:
+#### Embedding of top functions
+Identifies top N functions (default N = 5) for brain regions and creates similarity matrices:
 
 ```bash
 python main.py functions [OPTIONS]
 ```
 
-#### Probabilities Analysis  
+#### Probabilistic Functional Association  
 Calculates probabilities of specific functions being associated with regions:
 
 ```bash

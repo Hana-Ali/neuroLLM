@@ -112,13 +112,13 @@ MODEL_CONFIGS = {
     "llama": {
         "provider": "together",
         "model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "category": "free",
+        "category": "paid",
         "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
     },
     "deepseek": {
         "provider": "together",
         "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-        "category": "free",
+        "category": "paid",
         "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
     },
     "dummy": {

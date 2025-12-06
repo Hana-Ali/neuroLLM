@@ -1,6 +1,11 @@
 # LLM Brain Analysis
 
-A framework for using Large Language Models to analyze brain region functions across different species.
+A framework for using Large Language Models to analyze brain region functions across different species. 
+
+This repository provides code to illustrate the central approach in Luppi et al., "Cognitive cartography of mammalian brains using meta-analysis of AI experts." bioRxiv (2025) ([preprint]([https://doi.org/10.1038/s41551-024-01242-2](https://doi.org/10.64898/2025.12.01.691701))).
+Authors: Andrea I. Luppi, Hana Ali, Zhen-Qi Liu, Filip Milisav, Alessandro Gozzi, Danilo Bzdok & Bratislav Misic.
+
+
 
 ## Overview
 

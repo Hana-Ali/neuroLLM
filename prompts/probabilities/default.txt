@@ -1,6 +1,6 @@
 
     You are an expert in neuroscience literature analysis. Your task is to
-    estimate the probability that the brain region region **{region}**
+    estimate the probability that the brain region **{region}**
     {hemisphere_part} **{species}** brain is involved in **
     {function}**.
 

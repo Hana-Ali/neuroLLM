@@ -1,6 +1,6 @@
 
     You are an expert in neuroscience literature analysis. Your task is to
-    list out the top 5 functions that region region **{region}**
+    list out the top 5 functions that region **{region}**
     {hemisphere_part} **{species}** brain is involved in.
 
     These functions should be based on a simulated review of neuroscience

@@ -8,8 +8,8 @@ from utils.misc.query_saves import (
     _save_probability_results,
 )
 from utils.misc.atlas import load_regions_for_species
-from utils.prompts import (
-    generate_prompt,
+from utils.prompts import generate_prompt
+from utils.core.response_cleaning import (
     clean_functions_response,
     clean_probability_response,
 )
@@ -76,32 +76,6 @@ class BrainAnalyser:
             raise
 
         self._run_post_processing(analysis_type="probabilities")
-
-    def _process_regions_seq(self, analysis_type: str) -> bool:
-        """
-        Process all regions sequentially (for debugging)
-
-        Args:
-            * analysis_type: "functions" or "probabilities"
-        """
-        print("Running sequentially (1 worker)")
-
-        success_count = 0
-
-        for region in self.config.regions:
-            try:
-                print(f"Processing {region}...")
-                self._process_single_region(region, analysis_type)
-                success_count += 1
-                print(f"✓ Completed {region}")
-            except Exception as e:
-                print(f"✗ Failed {region}: {e}")
-                import traceback
-
-                traceback.print_exc()  # This will show the full error traceback
-
-        print(f"Completed {success_count}/{len(self.config.regions)} regions")
-        return success_count
 
     def _process_regions(self, analysis_type: str) -> bool:
         """

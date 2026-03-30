@@ -1,210 +1,95 @@
 import os
 import time
+import torch
 import random
-from dotenv import load_dotenv
 
-from typing import Dict, List, Callable, Tuple, Any
+from typing import Dict, List, Callable, Any
 
 import openai
-import anthropic
-from google import genai
-from together import Together
+
+from huggingface_hub import model_info
+from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
+from peft import PeftModel
+from sentence_transformers import SentenceTransformer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.misc.logging_setup import logger
-
-from utils.paths.base import DEFAULT_PATHS
-from utils.misc.variables import MODEL_CONFIGS, PROVIDER_CONFIGS
+from utils.misc.variables import (
+    OPENROUTER_BASE_URL,
+    BRAINGPT_CONFIG,
+    LOCAL_MODELS,
+    EMBEDDING_DIMS,
+)
 
 
 class APIClientManager:
-    """Manages multiple API clients for different LLM providers"""
+    """Manages API clients for OpenRouter, BrainGPT, and Dummy providers"""
 
-    def __init__(self, models: str = "all"):
+    def __init__(
+        self,
+        models: str = "dummy",
+        embedding_provider: str = "openai",
+        max_tokens: int = 256,
+    ):
         """
+        Initialize API clients for all needed providers
+
         Args:
-            * models (str): Comma-separated list of model names to use OR
-                category of models ('all', 'all-excl-dummy', 'paid', 'dummy')
-                (default: 'all')
-        """
-        self.models: str = models
-        self.clients: Dict[str, Callable] = {}
-    
-    def init_clients(self) -> bool:
-        """
-        Initialize API clients for all providers
+            * models (str): Comma-separated list of OpenRouter model IDs,
+                'braingpt', or 'dummy' (default: 'dummy')
+            * embedding_provider (str): 'openai' or 'local' (default: 'openai')
+                'openai' uses text-embedding-3-large (requires OPENAI_API_KEY)
+                'local' uses BAAI/bge-large-en-v1.5 via sentence-transformers
+            * max_tokens (int): Maximum tokens to generate per response
+                (default: 256)
 
         Raises:
             * Exception if any client fails to initialize
         """
+        self.clients: Dict[str, Any] = {}
+        self.model_names: List[str] = [m.strip() for m in models.split(",")]
+        self.embedding_provider = embedding_provider
+        self.max_tokens = max_tokens
 
-        # Load API keys
-        api_keys = self._load_api_keys()
-
-        # Get the providers needed for the selected models
-        model_names, providers = self.get_models_info()
-
-        # Ensure that we have correct API keys for the selected providers
-        self._check_api_keys_present(providers=providers, api_keys=api_keys)
-        
-        # Initialize clients for each provider that's needed
         try:
-            for provider in set(providers):
-                if not PROVIDER_CONFIGS[provider]["requires_client"]:
-                    continue  # Skip dummy
-                
-                # Initialize the client
-                api_key = api_keys[provider]
-                self.clients[provider] = self._init_provider_client(
-                    provider=provider, api_key=api_key
-                )
-                logger.info(f"Initialized {provider} client")
+            if any(m not in LOCAL_MODELS for m in self.model_names):
+                self._init_openrouter()
+
+            if embedding_provider == "openai":
+                self._init_openai_embeddings()
+            elif embedding_provider == "local":
+                self._init_local_embeddings()
+
+            if "braingpt" in self.model_names:
+                self._validate_braingpt_access()
+                self._init_braingpt()
+
         except Exception as e:
             logger.error_status(
                 f"Failed to initialize clients: {str(e)}", exc_info=True
             )
             raise
-        
-        return model_names, providers
-
-    
-    def _init_provider_client(self, provider: str, api_key: str) -> Any:
-        """
-        Initialize a client for a specific provider
-
-        Args:
-            * provider: Provider name
-            * api_key: API key for the provider
-
-        Returns:
-            Initialized client object
-        """
-        initializers = {
-            "openai": lambda: setattr(openai, 'api_key', api_key) or openai,
-            "claude": lambda: anthropic.Anthropic(api_key=api_key),
-            "gemini": lambda: genai.Client(api_key=api_key),
-            "together": lambda: Together(api_key=api_key),
-        }
-        
-        if provider not in initializers:
-            raise ValueError(f"No initializer found for provider: {provider}")
-        
-        return initializers[provider]()
-
-    def get_models_info(self)-> Tuple[List[str], List[str]]:
-        """
-        Get model names and providers
-
-        Returns:
-            * Tuple of model names and their providers
-        """
-
-        if self.models == "all":
-            names = list(MODEL_CONFIGS.keys())
-        elif self.models == "all-excl-dummy":
-            names = [
-                name
-                for name, config in MODEL_CONFIGS.items()
-                if config["category"] != "dummy"
-            ]
-        elif self.models in ["paid", "dummy"]:
-            names = [
-                name
-                for name, config in MODEL_CONFIGS.items()
-                if config["category"] == self.models
-            ]
-        else:
-            # Comma-separated list of model names
-            names = [model.strip() for model in self.models.split(",")]
-        
-        # Provider always retrieved the same, irrespective of category
-        providers = [
-            MODEL_CONFIGS[name]["provider"] for name in names
-        ]
-        
-        return names, providers
-
-
-    def _load_api_keys(self) -> Dict[str, str]:
-        """
-        Load API keys from environment variables or .env file
-
-        Returns:
-            * api_keys (dict): Dictionary of API keys
-                {
-                    "openai": "openai_api_key",
-                    "claude": "claude_api_key",
-                    "gemini": "gemini_api_key",
-                    "together": "togetherai_api_key",
-                }
-        """
-
-        # Load from .env file
-        env_file = DEFAULT_PATHS["env_file"]
-        try:
-            load_dotenv(env_file)
-            logger.info(f"Loaded environment variables from {env_file}")
-        except Exception as e:
-            logger.error_status(
-                f"Error loading {env_file}: {str(e)}", exc_info=True
-            )
-            raise
-
-        # Get the API keys from environment variables using the provider config
-        api_keys = {
-            provider: os.environ.get(config["env_key"])
-            for provider, config in PROVIDER_CONFIGS.items()
-            if config["env_key"] is not None
-        }
-
-        return api_keys
-
-    def _check_api_keys_present(
-        self, providers: List[str], api_keys: Dict[str, str]
-    ) -> bool:
-        """
-        Check if all required API keys are present in environment variables
-
-        Args:
-            * providers (list): List of provider names
-            * api_keys (dict): Dictionary of API keys
-
-        Returns:
-            * Exception if any required API key is missing
-        """
-
-        # For each provider, check if the API key is present
-        for provider in set(providers):
-            provider_config = PROVIDER_CONFIGS.get(provider)
-            
-            # Only check for API key if the provider requires a client
-            if (
-                provider_config["requires_client"]
-                and not api_keys.get(provider)
-            ):
-                logger.error(f"Missing API key for provider: {provider}")
-                raise ValueError(f"Missing API key for provider: {provider}")
 
     def query_model(self, model_name: str, prompt: str) -> str:
         """
         Query a model by name
 
         Args:
-            * model_name (str): Name of the model to query
+            * model_name (str): OpenRouter model ID, 'braingpt', or 'dummy'
             * prompt (str): Prompt to send to the model
 
         Returns:
-            * response (str): Model response or error message
+            * response (str): Model response
         """
-
-        # Get the model config, as well as provider and model_id
-        config = MODEL_CONFIGS[model_name]
-        provider = config["provider"]
-        model_id = config["model_id"]
-
         try:
-            return self._query_provider(
-                provider=provider, model_id=model_id, prompt=prompt
-            )
+            if model_name == "dummy":
+                return self._query_dummy(prompt=prompt)
+            elif model_name == "braingpt":
+                return self._query_braingpt(prompt=prompt)
+            else:
+                return self.retry_with_backoff(
+                    self._query_openrouter, model_name, prompt
+                )
         except Exception as e:
             error_msg = f"Error querying {model_name}: {str(e)}"
             logger.error_status(error_msg, exc_info=True)
@@ -219,11 +104,13 @@ class APIClientManager:
     ):
         """
         Retry a function with exponential backoff
+
         Args:
             * func: Function to retry
             * *args: Arguments to pass to func
             * max_retries: Maximum number of retry attempts
             * initial_delay: Initial backoff delay in seconds
+
         Returns:
             * The result from the function
         """
@@ -249,119 +136,145 @@ class APIClientManager:
                 )
                 time.sleep(delay)
 
-    def _query_provider(
-        self, provider: str, model_id: str, prompt: str
-    ) -> str:
+    # -------------------------------------------------------------------------
+    # Initialisation helpers
+    # -------------------------------------------------------------------------
+
+    def _init_openrouter(self):
         """
-        Route to the appropriate provider with retry logic
-
-        Args:
-            * provider (str): Provider name
-                ('openai', 'claude', 'gemini', 'together', 'dummy')
-            * model_id (str): Model ID for the provider
-            * prompt (str): Prompt to send to the model
-
-        Returns:
-            * response (str): Model response
+        Validate OPENROUTER_API_KEY and create the OpenRouter client. Uses the
+        OpenAI SDK with a base_url override
         """
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            raise ValueError(
+                "Missing OPENROUTER_API_KEY in .env file. "
+                "Get one at https://openrouter.ai/keys"
+            )
+        self.clients["openrouter"] = openai.OpenAI(
+            base_url=OPENROUTER_BASE_URL,
+            api_key=openrouter_key,
+        )
+        logger.info("Initialized OpenRouter client")
 
-        # Map providers to their query functions
-        provider_methods = {
-            "dummy": lambda: self._query_dummy(prompt),
-            "openai": lambda: self.retry_with_backoff(
-                self._query_openai, model_id, prompt
-            ),
-            "claude": lambda: self.retry_with_backoff(
-                self._query_claude, model_id, prompt
-            ),
-            "gemini": lambda: self.retry_with_backoff(
-                self._query_gemini, model_id, prompt
-            ),
-            "together": lambda: self.retry_with_backoff(
-                self._query_together,
-                model_id,
-                prompt,
-                max_retries=7,
-                initial_delay=5,
-            ),
+    def _init_openai_embeddings(self):
+        """
+        Validate OPENAI_API_KEY and create the OpenAI embeddings client.
+
+        Note: embeddings cannot be routed through OpenRouter - a direct
+        OpenAI key is required (only used for top-functions command, and can be
+        bypassed with --embedding-provider local)
+        """
+        openai_key = os.environ.get("OPENAI_API_KEY")
+        if not openai_key:
+            raise ValueError(
+                "Missing OPENAI_API_KEY in .env file. "
+                "This is separate from your OpenRouter key and is only needed "
+                "for top-functions (embeddings). "
+                "Get one at https://platform.openai.com/account/api-keys. "
+                "Alternatively, use --embedding-provider local."
+            )
+        self.clients["openai_embeddings"] = openai.OpenAI(api_key=openai_key)
+        logger.info("Initialized OpenAI embeddings client")
+
+    def _init_local_embeddings(self):
+        """
+        Load BAAI/bge-large-en-v1.5 via sentence-transformers.
+        Weights are downloaded on first use and cached locally in
+        ~/.cache/huggingface/hub/ by the huggingface_hub library
+        """
+        self.clients["local_embeddings"] = SentenceTransformer(
+            "BAAI/bge-large-en-v1.5"
+        )
+        logger.info(
+            "Initialized local embeddings model (BAAI/bge-large-en-v1.5)"
+        )
+
+    def _validate_braingpt_access(self):
+        """
+        Validate HF_TOKEN exists and has access to the gated BrainGPT base
+        model on Hugging Face. Must be called before _init_braingpt()
+        """
+        # Get HF token
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token:
+            raise ValueError(
+                "BrainGPT requires HF_TOKEN in .env file. "
+                "Get one at https://huggingface.co/settings/tokens"
+            )
+        # Check access to base model by fetching model info (fast-ish)
+        try:
+            model_info(BRAINGPT_CONFIG["base_model_id"], token=hf_token)
+        except GatedRepoError:
+            raise ValueError(
+                f"HF_TOKEN does not have access to "
+                f"{BRAINGPT_CONFIG['base_model_id']}. Request access at "
+                "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
+            )
+        except RepositoryNotFoundError:
+            raise ValueError(
+                f"Model {BRAINGPT_CONFIG['base_model_id']} not found on "
+                "Hugging Face. Check BRAINGPT_CONFIG in variables.py"
+            )
+        logger.info("BrainGPT: HF access verified")
+
+    def _init_braingpt(self):
+        """
+        Load BrainGPT model and tokenizer (Llama-2 base + LoRA adapter)
+        Stores them in self.clients["braingpt"] as a dict
+        """
+        # Get HF token, as well as model IDs from config
+        hf_token = os.environ.get("HF_TOKEN")
+        base_model_id = BRAINGPT_CONFIG["base_model_id"]
+        adapter_id = BRAINGPT_CONFIG["adapter_id"]
+
+        # Load base model, then apply LoRA adapter. Use 16-bit precision and
+        # auto device mapping for efficiency
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_id,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            token=hf_token,
+        )
+        model = PeftModel.from_pretrained(model, adapter_id)
+        model.eval()
+
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_id, token=hf_token
+        )
+
+        # Store in clients dict
+        self.clients["braingpt"] = {
+            "model": model,
+            "tokenizer": tokenizer,
         }
+        logger.info("Initialized BrainGPT model")
 
-        if provider not in provider_methods:
-            raise ValueError(f"Unknown provider: {provider}")
+    # -------------------------------------------------------------------------
+    # Query helpers
+    # -------------------------------------------------------------------------
 
-        return provider_methods[provider]()
-
-    def _query_openai(self, model_id: str, prompt: str) -> str:
+    def _query_openrouter(self, model_id: str, prompt: str) -> str:
         """
-        Query OpenAI models
+        Query any model via OpenRouter
 
         Args:
-            * model_id (str): OpenAI model ID
+            * model_id (str): OpenRouter model ID (e.g., 'openai/gpt-4o-mini')
             * prompt (str): Prompt to send to the model
 
         Returns:
             * response (str): Model response
         """
-        client = self.clients["openai"]
+        client = self.clients["openrouter"]
         response = client.chat.completions.create(
             model=model_id,
             messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            seed=42,
+            max_tokens=self.max_tokens,
         )
         return response.choices[0].message.content.strip()
-
-    def _query_claude(self, model_id: str, prompt: str) -> str:
-        """
-        Query Claude models
-
-        Args:
-            * model_id (str): Claude model ID
-            * prompt (str): Prompt to send to the model
-
-        Returns:
-            * response (str): Model response
-        """
-        client = self.clients["claude"]
-        response = client.messages.create(
-            model=model_id,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text.strip()
-
-    def _query_gemini(self, model_id: str, prompt: str) -> str:
-        """
-        Query Gemini models
-
-        Args:
-            * model_id (str): Gemini model ID
-            * prompt (str): Prompt to send to the model
-
-        Returns:
-            * response (str): Model response
-        """
-        client = self.clients["gemini"]
-        response = client.models.generate_content(
-            model=model_id, contents=prompt
-        )
-        return response.text
-
-    def _query_together(self, model_id: str, prompt: str) -> str:
-        """
-        Query TogetherAI models
-
-        Args:
-            * model_id (str): TogetherAI model ID
-            * prompt (str): Prompt to send to the model
-
-        Returns:
-            * response (str): Model response
-        """
-        client = self.clients["together"]
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.choices[0].message.content
 
     def _query_dummy(self, prompt: str) -> str:
         """
@@ -398,9 +311,48 @@ class APIClientManager:
         else:
             return "This is a dummy response for testing purposes"
 
+    def _query_braingpt(self, prompt: str) -> str:
+        """
+        Query BrainGPT (Llama-2 + LoRA adapter) locally
+
+        Args:
+            * prompt (str): Prompt to send to the model
+
+        Returns:
+            * response (str): Model response
+        """
+
+        # Get model and tokenizer from clients dict
+        model = self.clients["braingpt"]["model"]
+        tokenizer = self.clients["braingpt"]["tokenizer"]
+
+        # Tokenize prompt and move to model device
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+        # Generate responses
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=self.max_tokens,
+                do_sample=False,
+            )
+
+        # Decode only the newly generated tokens (skip the prompt tokens)
+        token_start = inputs["input_ids"].shape[1]
+        response = tokenizer.decode(
+            outputs[0][token_start:],
+            skip_special_tokens=True,
+        )
+        return response.strip()
+
+    # -------------------------------------------------------------------------
+    # Embedding helpers
+    # -------------------------------------------------------------------------
+
     def get_embeddings(self, text: str, model: str) -> List[float]:
         """
-        Get embeddings for text using OpenAI or return dummy embeddings
+        Get embeddings for text using the configured embedding provider,
+        or return dummy embeddings in test mode.
 
         Args:
             * text: Text to embed
@@ -410,15 +362,23 @@ class APIClientManager:
             * Embedding vector as a list of floats
         """
 
-        # Return a random 3073-dim vector (OpenAI's dimension) for dummy
+        # Return random embeddings for dummy model
         if model == "dummy":
-            return [random.uniform(-1, 1) for _ in range(3073)]
+            return [
+                random.uniform(-1, 1)
+                for _ in range(EMBEDDING_DIMS[self.embedding_provider])
+            ]
 
+        # Get embeddings from the local provider
+        if self.embedding_provider == "local":
+            return self._get_local_embeddings(text=text)
+
+        # Get embeddings from OpenAI with retry logic
         return self.retry_with_backoff(self._get_openai_embeddings, text)
 
-    def _get_openai_embeddings(self, text: str) -> List[float]:
+    def _get_local_embeddings(self, text: str) -> List[float]:
         """
-        Get embeddings from OpenAI
+        Get embeddings from the local BAAI/bge-large-en-v1.5 model
 
         Args:
             * text: Text to embed
@@ -426,7 +386,21 @@ class APIClientManager:
         Returns:
             * Embedding vector as a list of floats
         """
-        client = self.clients["openai"]
+        return self.clients["local_embeddings"].encode(
+            text, normalize_embeddings=True
+        ).tolist()
+
+    def _get_openai_embeddings(self, text: str) -> List[float]:
+        """
+        Get embeddings from OpenAI's text-embedding-3-large model
+
+        Args:
+            * text: Text to embed
+
+        Returns:
+            * Embedding vector as a list of floats
+        """
+        client = self.clients["openai_embeddings"]
         response = client.embeddings.create(
             input=text, model="text-embedding-3-large"
         )

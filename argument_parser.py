@@ -49,6 +49,12 @@ def parse_args():
     )
     analysis_parent.add_argument("--workers", type=int, default=4)
     analysis_parent.add_argument(
+        "--max-tokens",
+        type=int,
+        default=256,
+        help="Maximum number of tokens to generate per response",
+    )
+    analysis_parent.add_argument(
         "--embedding-provider",
         default="openai",
         choices=["openai", "local"],

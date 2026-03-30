@@ -55,79 +55,16 @@ DEFAULT_TEMPLATES = {
 }
 
 
-PROVIDER_CONFIGS = {
-    "openai": {
-        "env_key": "OPENAI_API_KEY",
-        "requires_client": True,
-    },
-    "claude": {
-        "env_key": "CLAUDE_API_KEY",
-        "requires_client": True,
-    },
-    "gemini": {
-        "env_key": "GEMINI_API_KEY",
-        "requires_client": True,
-    },
-    "together": {
-        "env_key": "TOGETHERAI_API_KEY",
-        "requires_client": True,
-    },
-    "dummy": {
-        "env_key": None,
-        "requires_client": False,
-    },
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+BRAINGPT_CONFIG = {
+    "base_model_id": "meta-llama/Llama-2-7b-chat-hf",
+    "adapter_id": "BrainGPT/BrainGPT-7B-v0.1",
 }
 
-MODEL_CONFIGS = {
-    "openai": {
-        "provider": "openai",
-        "model_id": "gpt-4o-mini",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 20, "concurrent": 5},
-    },
-    "claude": {
-        "provider": "claude",
-        "model_id": "claude-3-7-sonnet-latest",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 15, "concurrent": 3},
-    },
-    "gemini": {
-        "provider": "gemini",
-        "model_id": "gemini-2.0-flash",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 20, "concurrent": 5},
-    },
-    "qwen": {
-        "provider": "together",
-        "model_id": "Qwen/Qwen2.5-7B-Instruct-Turbo",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
-    },
-    "mistral": {
-        "provider": "together",
-        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
-    },
-    "llama": {
-        "provider": "together",
-        "model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
-    },
-    "deepseek": {
-        "provider": "together",
-        "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-        "category": "paid",
-        "rate_limits": {"calls_per_minute": 10, "concurrent": 2},
-    },
-    "dummy": {
-        "provider": "dummy",
-        "model_id": "dummy-model-for-testing",
-        "category": "dummy",
-        "rate_limits": {"calls_per_minute": 1000, "concurrent": 100},
-    },
-}
+LOCAL_MODELS = {"braingpt", "dummy"}
+
+EMBEDDING_DIMS = {"openai": 3072, "local": 1024}
 
 DEFAULT_FUNCTIONS = [
     "spatial cognition",

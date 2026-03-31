@@ -135,6 +135,7 @@ python main.py test --atlas-name DesikanKilliany68
 | `--workers` | Number of parallel workers | `4` |
 | `--skip-visualization` | Skip creating visualizations | `False` |
 | `--skip-raw-saving` | Clean up raw data files after processing | `False` |
+| `--max-tokens` | Maximum number of tokens to generate per LLM response | `256` |
 
 #### `top-functions`-specific options
 
@@ -283,6 +284,6 @@ Each subdirectory is further organized as: `{species}/{atlas_name}/{model_name}/
 - Ensure API keys are properly set in `.env` file
 - Verify atlas files exist in correct directory structure
 - Use `--models dummy` for testing without API usage
-- Use `--list-models` to verify your OpenRouter API key works and see available models
+- Use `list-models` to verify your OpenRouter API key works and see available models
 - **BrainGPT not loading?** Make sure you've been granted access to `meta-llama/Llama-2-7b-chat-hf` on Hugging Face and that your `HF_TOKEN` has the correct permissions
 - Check that function names in `--functions` match those in literature

@@ -35,7 +35,7 @@ def main():
 
     # Handle list-models command early exit
     if args.command == "list-models":
-        list_available_models()
+        list_available_models(filter=args.filter)
         sys.exit(0)
 
     # Determine models to use based on command

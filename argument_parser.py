@@ -55,9 +55,15 @@ def parse_args():
         help="Maximum number of tokens to generate per response",
     )
 
-    # List models - no additional arguments needed
-    subparsers.add_parser(
+    # List models
+    list_models_parser = subparsers.add_parser(
         "list-models", help="List available models from OpenRouter"
+    )
+    list_models_parser.add_argument(
+        "--filter",
+        default="all",
+        choices=["all", "free", "paid"],
+        help="Filter models by pricing: 'all' (default), 'free', or 'paid' (sorted cheapest first per provider)",
     )
 
     # Top functions - inherits shared arguments

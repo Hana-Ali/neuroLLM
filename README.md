@@ -85,11 +85,17 @@ python main.py {list-models|top-functions|query-functions|test} [OPTIONS]
 ### Commands
 
 #### `list-models` -- List Available Models
-Lists all models available on OpenRouter with pricing, then exits. Requires no other arguments:
+Lists chat models available on OpenRouter with pricing, then exits.
 
 ```bash
-python main.py list-models
+python main.py list-models                  # all chat models (default)
+python main.py list-models --filter free    # zero-cost models only
+python main.py list-models --filter paid    # cheapest 3 paid models per provider
 ```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--filter` | `all` shows every chat model, `free` shows zero-cost models, `paid` shows the 3 cheapest paid models per provider sorted by combined prompt + completion cost | `all` |
 
 #### `top-functions` -- Embedding of Top Functions
 Identifies top 5 functions for brain regions and creates similarity matrices:
@@ -145,10 +151,11 @@ python main.py test --atlas-name DesikanKilliany68
 
 ### Choosing Models
 
-Models are specified by their **OpenRouter model ID** (e.g. `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`). To see all available models and their pricing:
+Models are specified by their **OpenRouter model ID** (e.g. `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`). To browse available models and their pricing:
 
 ```bash
-python main.py list-models
+python main.py list-models                # all chat models
+python main.py list-models --filter paid  # cheapest 3 per provider — good starting point
 ```
 
 You can pass one or more model IDs:

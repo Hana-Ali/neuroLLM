@@ -335,6 +335,7 @@ class APIClientManager:
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=self.max_tokens,
+                max_length=None,
                 do_sample=False,
             )
 

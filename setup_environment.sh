@@ -41,9 +41,13 @@ conda activate "$ENV_NAME"
 echo "Installing conda packages..."
 conda install -y -c conda-forge pandas numpy matplotlib seaborn scikit-learn
 
-# Install packages from pip
+# Install pip packages
 echo "Installing pip packages..."
-pip install openai anthropic google-genai together python-dotenv
+pip install openai requests python-dotenv
+
+# Install BrainGPT dependencies (only needed if using BrainGPT model)
+echo "Installing BrainGPT dependencies (peft, transformers, torch)..."
+pip install peft transformers torch
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
@@ -52,10 +56,9 @@ if [ ! -f .env ]; then
 # API Keys for LLM Brain Analysis
 # Replace the placeholder values with your actual API keys
 
-OPENAI_API_KEY=your-openai-key-here
-CLAUDE_API_KEY=your-claude-key-here
-GEMINI_API_KEY=your-gemini-key-here
-TOGETHERAI_API_KEY=your-togetherai-key-here
+OPENROUTER_API_KEY=your-openrouter-key-here
+OPENAI_API_KEY=your-openai-key-here           # Only needed for top-functions (embeddings)
+HF_TOKEN=your-huggingface-token-here          # Only needed for BrainGPT
 EOF
     echo "Created .env template"
 else
@@ -135,7 +138,10 @@ echo "To activate the environment, run:"
 echo "    conda activate $ENV_NAME"
 echo ""
 echo "Before running the analysis, you need to:"
-echo "1. Edit .env file with your actual API keys"
+echo "1. Edit .env file with your API keys (OPENROUTER_API_KEY required)"
+echo "   - Get an OpenRouter key at https://openrouter.ai/keys"
+echo "   - OPENAI_API_KEY only needed for top-functions (embeddings)"
+echo "   - HF_TOKEN only needed for BrainGPT model"
 echo "2. Add your atlas CSV files to the atlases/{species}/ directories"
 echo "   Example: atlases/human/DesikanKilliany68.csv"
 echo ""

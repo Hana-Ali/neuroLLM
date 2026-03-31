@@ -97,6 +97,8 @@ python main.py list-models --filter paid    # cheapest 3 paid models per provide
 |--------|-------------|---------|
 | `--filter` | `all` shows every chat model, `free` shows zero-cost models, `paid` shows the 3 cheapest paid models per provider sorted by combined prompt + completion cost | `all` |
 
+> **Note:** Free models on OpenRouter may return a `404` error if your account's privacy/data policy settings are too restrictive. If this happens, adjust your settings at [openrouter.ai/settings/privacy](https://openrouter.ai/settings/privacy) or use a paid model instead.
+
 #### `top-functions` -- Embedding of Top Functions
 Identifies top 5 functions for brain regions and creates similarity matrices:
 

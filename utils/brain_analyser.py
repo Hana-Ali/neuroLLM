@@ -1,3 +1,5 @@
+import os
+import json
 from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,6 +19,8 @@ from utils.core.aggregation import aggregate_results
 from utils.core.visualisation import create_visualisations
 
 from utils.paths.base import BasePathConstructor
+from utils.paths.query import QueryPathConstructor
+from utils.paths.embeddings import EmbeddingsPathConstructor
 
 
 class BrainAnalyser:
@@ -146,6 +150,61 @@ class BrainAnalyser:
                             analysis_type=analysis_type,
                         )
 
+    def _get_existing_response(
+        self,
+        region: str,
+        hemisphere: str,
+        model: str,
+        analysis_type: str,
+        function: str = None,
+    ):
+        """
+        Load and return an existing raw LLM response if one exists for this
+        exact configuration. Returns None if no response is found
+
+        For functions: returns the raw response string
+        For probabilities: returns the stored result for the given function
+
+        Args:
+            * region: Brain region name
+            * hemisphere: Hemisphere string
+            * model: Model name
+            * analysis_type: "functions" or "probabilities"
+            * function: Brain function (only for probabilities)
+
+        Returns:
+            * The existing response, or None if not found
+        """
+
+        # Get the path for the raw response
+        result_path = QueryPathConstructor.construct_query_region_path(
+            model=model,
+            region=region,
+            species=self.config.species,
+            atlas_name=self.config.atlas_name,
+            analysis_type=analysis_type,
+            hemisphere=hemisphere,
+            template_name=self.config.prompt_template_name,
+        )
+
+        # If the file doesn't exist, return None
+        if not os.path.exists(result_path):
+            return None
+
+        # If it does exist, try to load it and return the relevant part
+        try:
+            with open(result_path, "r") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        # For functions, return raw response string. For probabilities, return
+        # the stored result for the given function
+        if analysis_type == "functions":
+            return list(existing.values())[0] if existing else None
+        else:
+            return existing.get(function)
+
     def _process_function_task(
         self,
         region: str,
@@ -155,11 +214,10 @@ class BrainAnalyser:
     ):
         """
         Process a single function analysis task
-            1. Generate prompt
-            2. Query model
-            3. Clean response
-            4. Get embedding
-            5. Save results
+            1. Query model (skip if raw response exists)
+            2. Clean response
+            3. Get embedding (skip if embedding exists)
+            4. Save results
 
         Args:
             * region: Brain region name
@@ -167,31 +225,61 @@ class BrainAnalyser:
             * model: Model name
         """
 
-        # 1. Generate prompt
-        prompt = generate_prompt(
-            prompt_type=analysis_type,
-            region_name=region,
-            species=self.config.species,
-            atlas_name=self.config.atlas_name,
+        # Check for existing response from LLM
+        existing_response = self._get_existing_response(
+            region=region,
             hemisphere=hemisphere,
-            template_name=self.config.prompt_template_name,
-            save_to_results=True,
+            model=model,
+            analysis_type=analysis_type,
+        )
+        # Check for existing embedding
+        embedding_path = (
+            EmbeddingsPathConstructor.construct_embeddings_region_path(
+                model=model,
+                region=region,
+                species=self.config.species,
+                atlas_name=self.config.atlas_name,
+                analysis_type=analysis_type,
+                hemisphere=hemisphere,
+                template_name=self.config.prompt_template_name,
+            )
         )
 
-        # 2. Query model
-        response = self.config.client_manager.query_model(
-            model_name=model, prompt=prompt
-        )
+        # If both exist, skip processing this region/model combo
+        if existing_response is not None and os.path.exists(embedding_path):
+            logger.info(f"Skipping {region} ({model}) - already done")
+            return
 
-        # 3. Clean response
+        # 1. Get response (load existing or query LLM)
+        if existing_response is not None:
+            logger.info(
+                f"Loading existing response for {region} ({model})"
+            )
+            response = existing_response
+        else:
+            logger.processing(f"Querying {region} ({model})")
+            prompt = generate_prompt(
+                prompt_type=analysis_type,
+                region_name=region,
+                species=self.config.species,
+                atlas_name=self.config.atlas_name,
+                hemisphere=hemisphere,
+                template_name=self.config.prompt_template_name,
+                save_to_results=True,
+            )
+            response = self.config.client_manager.query_model(
+                model_name=model, prompt=prompt
+            )
+
+        # 2. Clean response
         cleaned_functions = clean_functions_response(response=response)
 
-        # 4. Get embedding
+        # 3. Get embedding
         embedding = self.config.client_manager.get_embeddings(
             text=", ".join(cleaned_functions), model=model
         )
 
-        # 5. Save results
+        # 4. Save results
         _save_function_results(
             model=model,
             config=self.config,
@@ -226,6 +314,23 @@ class BrainAnalyser:
             * model: Model name
             * analysis_type: Type of analysis ("probabilities")
         """
+
+        # Check for existing response from LLM - if exists, skip
+        if self._get_existing_response(
+            region=region,
+            hemisphere=hemisphere,
+            model=model,
+            analysis_type=analysis_type,
+            function=function,
+        ) is not None:
+            logger.info(
+                f"Skipping {region}/{function} ({model}) - already done"
+            )
+            return
+
+        logger.processing(
+            f"Querying {region} - {function} ({model})"
+        )
 
         # 1. Generate prompt
         prompt = generate_prompt(

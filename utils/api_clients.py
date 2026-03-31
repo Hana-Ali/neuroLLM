@@ -369,10 +369,8 @@ class APIClientManager:
 
         # Return random embeddings for dummy model
         if model == "dummy":
-            return [
-                random.uniform(-1, 1)
-                for _ in range(EMBEDDING_DIMS[self.embedding_provider])
-            ]
+            dims = EMBEDDING_DIMS.get(self.embedding_provider, 1024)
+            return [random.uniform(-1, 1) for _ in range(dims)]
 
         # Get embeddings from the local provider
         if self.embedding_provider == "local":

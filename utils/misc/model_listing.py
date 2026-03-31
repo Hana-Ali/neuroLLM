@@ -118,7 +118,8 @@ def list_available_models(filter: str = "all"):
             cheapest = sorted(
                 by_provider[provider], key=lambda m: sum(_get_costs(model=m))
             )[:3]
-            print(f"--- {provider} ---")
+            label = f" {provider} "
+            print(f"{label:─^140}")
             _print_table(models=cheapest)
             print()
 

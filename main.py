@@ -1,33 +1,55 @@
-"""
-Simplified main script for brain region analysis
-
-Works with the new BrainAnalyser class system
-"""
-
 import sys
+import random
 from types import SimpleNamespace
 from argument_parser import parse_args
 
+import numpy as np
+import torch
+
+from dotenv import load_dotenv
+
 from utils.brain_analyser import BrainAnalyser
 from utils.api_clients import APIClientManager
+from utils.misc.model_listing import list_available_models
 from utils.core.function_processing import load_function_group, load_functions
+from utils.paths.base import DEFAULT_PATHS
 
 from utils.misc.logging_setup import logger
 
 
 def main():
     """Main LLM brain analysis script"""
+    # Set global seeds for reproducibility
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    # Load environment variables from .env file
+    load_dotenv(DEFAULT_PATHS["env_file"])
+
+    # Parse command-line arguments
     args = parse_args()
+
+    # Handle list-models command early exit
+    if args.command == "list-models":
+        list_available_models()
+        sys.exit(0)
 
     # Determine models to use based on command
     models_input = "dummy" if args.command == "test" else args.models
 
     # Initialize API clients
     logger.info("Initializing API clients...")
-    client_manager = APIClientManager(models=models_input)
-
     try:
-        model_names, _ = client_manager.init_clients()
+        client_manager = APIClientManager(
+            models=models_input,
+            embedding_provider=args.embedding_provider,
+            max_tokens=args.max_tokens,
+        )
+        model_names = client_manager.model_names
         logger.info(f"Using models: {', '.join(model_names)}")
     except Exception as e:
         logger.error_status(
@@ -106,7 +128,7 @@ def main():
         else:
             logger.error_status(
                 f"Unknown command: {args.command}, please use from available "
-                "commands: top-functions, query-functions, test"
+                "commands: list-models, top-functions, query-functions, test"
             )
             sys.exit(1)
 

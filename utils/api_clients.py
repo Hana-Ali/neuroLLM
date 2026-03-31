@@ -28,7 +28,7 @@ class APIClientManager:
     def __init__(
         self,
         models: str = "dummy",
-        embedding_provider: str = "openai",
+        embedding_provider: str = None,
         max_tokens: int = 256,
     ):
         """
@@ -37,7 +37,8 @@ class APIClientManager:
         Args:
             * models (str): Comma-separated list of OpenRouter model IDs,
                 'braingpt', or 'dummy' (default: 'dummy')
-            * embedding_provider (str): 'openai' or 'local' (default: 'openai')
+            * embedding_provider (str | None): 'openai' or 'local', or None to
+                skip embedding init (only needed for top-functions)
                 'openai' uses text-embedding-3-large (requires OPENAI_API_KEY)
                 'local' uses BAAI/bge-large-en-v1.5 via sentence-transformers
             * max_tokens (int): Maximum tokens to generate per response

@@ -46,7 +46,11 @@ def main():
     try:
         client_manager = APIClientManager(
             models=models_input,
-            embedding_provider=args.embedding_provider,
+            embedding_provider=(
+                args.embedding_provider
+                if args.command == "top-functions"
+                else None
+            ),
             max_tokens=args.max_tokens,
         )
         model_names = client_manager.model_names

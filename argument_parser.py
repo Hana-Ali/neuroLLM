@@ -54,15 +54,6 @@ def parse_args():
         default=256,
         help="Maximum number of tokens to generate per response",
     )
-    analysis_parent.add_argument(
-        "--embedding-provider",
-        default="openai",
-        choices=["openai", "local"],
-        help="Embedding provider for top-functions analysis. "
-        "'openai' uses text-embedding-3-large (requires OPENAI_API_KEY). "
-        "'local' uses BAAI/bge-large-en-v1.5 via sentence-transformers "
-        "(no API key needed, runs on your machine)",
-    )
 
     # List models - no additional arguments needed
     subparsers.add_parser(
@@ -70,10 +61,19 @@ def parse_args():
     )
 
     # Top functions - inherits shared arguments
-    subparsers.add_parser(
+    top_functions_parser = subparsers.add_parser(
         "top-functions",
         parents=[analysis_parent],
         help="Run top functions analysis",
+    )
+    top_functions_parser.add_argument(
+        "--embedding-provider",
+        default="openai",
+        choices=["openai", "local"],
+        help="Embedding provider for top-functions analysis. "
+        "'openai' uses text-embedding-3-large (requires OPENAI_API_KEY). "
+        "'local' uses BAAI/bge-large-en-v1.5 via sentence-transformers "
+        "(no API key needed, runs on your machine)",
     )
 
     # Query functions - inherits shared arguments and adds function selection

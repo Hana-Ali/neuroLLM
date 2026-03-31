@@ -69,7 +69,11 @@ class AggregatedResultsPathConstructor(BasePathConstructor):
             hemisphere=hemisphere,
             template_name=template_name,
         )
-        return f"{aggregated_dir}/probability_distribution.{extension}"
+        if analysis_type == "functions":
+            filename = "function_distribution"
+        else:
+            filename = "probability_distribution"
+        return f"{aggregated_dir}/{filename}.{extension}"
 
     @classmethod
     def construct_individual_function_prob_path(

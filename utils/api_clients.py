@@ -275,7 +275,10 @@ class APIClientManager:
             seed=42,
             max_tokens=self.max_tokens,
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if content is None:
+            raise Exception("API returned empty response content")
+        return content.strip()
 
     def _query_dummy(self, prompt: str) -> str:
         """

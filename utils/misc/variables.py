@@ -49,9 +49,60 @@ DEFAULT_PROBABILITY_TEMPLATE = """
     """
 
 
+DEFAULT_RANKING_TEMPLATE = """
+    You are an expert in neuroscience literature analysis. Your task is to
+    determine which of two brain regions is more relevant to the function
+    **{function}** in the {hemisphere_part} **{species}** brain.
+
+    Region 1: **{region_1}**
+    Region 2: **{region_2}**
+
+    Base your assessment on a simulated review of neuroscience literature,
+    reflecting how frequently each region is associated with this function
+    across **peer-reviewed** studies, textbooks, and reputable sources.
+
+    ### Guidelines
+    1. Consider only **{species}**-specific neuroscience literature. Do **not**
+    use data from other species.
+    2. **DO NOT** provide explanations, citations, or any extra text—**return
+    only the number**.
+    3. Return **1** if Region 1 is more relevant, or **2** if Region 2 is
+    more relevant.
+
+    ### Expected Output Format
+    1 or 2
+    """
+
 DEFAULT_TEMPLATES = {
     "functions": DEFAULT_FUNCTION_TEMPLATE,
     "probabilities": DEFAULT_PROBABILITY_TEMPLATE,
+    "rankings": DEFAULT_RANKING_TEMPLATE,
+}
+
+JUSTIFY_OUTPUT_FORMATS = {
+    "functions": (
+        "### Expected Output Format\n"
+        "    [function_1, function_2, function_3, function_4, function_5]"
+        " | {justification}\n\n"
+        "    Where {justification} is a 1-2 sentence explanation (max 200 "
+        "characters) of why these are the top functions for this region. "
+        'Use " | " (space-pipe-space) as the separator between the list '
+        "and your justification."
+    ),
+    "probabilities": (
+        "### Expected Output Format\n"
+        "    0.XX | {justification}\n\n"
+        "    Where {justification} is a 1-2 sentence explanation (max 200 "
+        "characters) of your probability estimate. "
+        'Use " | " (space-pipe-space) as the separator.'
+    ),
+    "rankings": (
+        "### Expected Output Format\n"
+        "    1 | {justification} or 2 | {justification}\n\n"
+        "    Where {justification} is a 1-2 sentence explanation (max 200 "
+        "characters) of your ranking. "
+        'Use " | " (space-pipe-space) as the separator.'
+    ),
 }
 
 

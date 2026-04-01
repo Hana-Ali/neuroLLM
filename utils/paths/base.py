@@ -26,6 +26,19 @@ class BasePathConstructor(ABC):
         return "results/raw"
 
     @staticmethod
+    def get_atlas_path(atlas_name: str = None):
+        """
+        Construct atlas path segment
+
+        Args:
+            * atlas_name: Name of the atlas, or None
+
+        Returns:
+            * Atlas path segment
+        """
+        return atlas_name if atlas_name else "no_atlas"
+
+    @staticmethod
     def get_hemisphere_path(hemisphere: str = None):
         """
         Construct hemisphere path based on provided value

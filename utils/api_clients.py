@@ -71,13 +71,21 @@ class APIClientManager:
             )
             raise
 
-    def query_model(self, model_name: str, prompt: str) -> str:
+    def query_model(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float = None,
+    ) -> str:
         """
         Query a model by name
 
         Args:
-            * model_name (str): OpenRouter model ID, 'braingpt', or 'dummy'
+            * model_name (str): OpenRouter model ID,
+                'braingpt', or 'dummy'
             * prompt (str): Prompt to send to the model
+            * temperature (float | None): Override temperature.
+                None uses default (0 for deterministic).
 
         Returns:
             * response (str): Model response
@@ -89,10 +97,15 @@ class APIClientManager:
                 return self._query_braingpt(prompt=prompt)
             else:
                 return self.retry_with_backoff(
-                    self._query_openrouter, model_name, prompt
+                    self._query_openrouter,
+                    model_name,
+                    prompt,
+                    temperature,
                 )
         except Exception as e:
-            error_msg = f"Error querying {model_name}: {str(e)}"
+            error_msg = (
+                f"Error querying {model_name}: {str(e)}"
+            )
             logger.error_status(error_msg, exc_info=True)
             raise
 
@@ -234,7 +247,7 @@ class APIClientManager:
         model = AutoModelForCausalLM.from_pretrained(
             base_model_id,
             torch_dtype=torch.float16,
-            device_map="auto",
+            device_map="mps",
             token=hf_token,
         )
         model = PeftModel.from_pretrained(model, adapter_id)
@@ -256,28 +269,39 @@ class APIClientManager:
     # Query helpers
     # -------------------------------------------------------------------------
 
-    def _query_openrouter(self, model_id: str, prompt: str) -> str:
+    def _query_openrouter(
+        self,
+        model_id: str,
+        prompt: str,
+        temperature: float = None,
+    ) -> str:
         """
         Query any model via OpenRouter
 
         Args:
             * model_id (str): OpenRouter model ID (e.g., 'openai/gpt-4o-mini')
             * prompt (str): Prompt to send to the model
+            * temperature (float | None): Override temperature
 
         Returns:
             * response (str): Model response
         """
         client = self.clients["openrouter"]
+        temp = temperature if temperature is not None else 0
         response = client.chat.completions.create(
             model=model_id,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temp,
             seed=42,
             max_tokens=self.max_tokens,
         )
         content = response.choices[0].message.content
         if content is None:
-            raise Exception("API returned empty response content")
+            raise Exception(
+                "API returned empty response content"
+            )
         return content.strip()
 
     def _query_dummy(self, prompt: str) -> str:
@@ -290,8 +314,22 @@ class APIClientManager:
         Returns:
             * response (str): Dummy response
         """
-        if "probability" in prompt.lower():
-            return f"{random.uniform(0.1, 0.9):.2f}"
+        has_justify = "justification" in prompt.lower()
+        justify_suffix = (
+            " | This is a dummy justification for testing."
+            if has_justify
+            else ""
+        )
+
+        if (
+            "which of two brain regions" in prompt.lower()
+            or "region 1:" in prompt.lower()
+        ):
+            rank = str(random.choice([1, 2]))
+            return f"{rank}{justify_suffix}"
+        elif "probability" in prompt.lower():
+            prob = f"{random.uniform(0.1, 0.9):.2f}"
+            return f"{prob}{justify_suffix}"
         elif "top 5 functions" in prompt.lower():
             functions = [
                 "sensory processing",
@@ -311,9 +349,12 @@ class APIClientManager:
                 "cognition",
             ]
             selected = random.sample(functions, 5)
-            return f"[{', '.join(selected)}]"
+            result = f"[{', '.join(selected)}]"
+            return f"{result}{justify_suffix}"
         else:
-            return "This is a dummy response for testing purposes"
+            return (
+                "This is a dummy response for testing"
+            )
 
     def _query_braingpt(self, prompt: str) -> str:
         """

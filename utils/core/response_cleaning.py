@@ -1,5 +1,20 @@
 import re
-from typing import List
+from typing import List, Tuple
+
+
+def _strip_thinking_tags(response: str) -> str:
+    """
+    Remove <think>...</think> tags from LLM responses
+
+    Args:
+        * response: Raw response string from the model
+
+    Returns:
+        * Cleaned response string without <think> tags
+    """
+    return re.sub(
+        r"<think>.*?</think>", "", response, flags=re.DOTALL
+    ).strip()
 
 
 def clean_functions_response(response: str) -> List[str]:
@@ -12,10 +27,7 @@ def clean_functions_response(response: str) -> List[str]:
     Returns:
         * List of up to 5 function names
     """
-    # Remove thinking tags
-    response = re.sub(
-        r"<think>.*?</think>", "", response, flags=re.DOTALL
-    ).strip()
+    response = _strip_thinking_tags(response=response)
 
     # Remove introductory text like "Region X is involved in:"
     response = re.sub(
@@ -63,11 +75,7 @@ def clean_probability_response(response: str) -> float:
     Returns:
         * Probability as float in [0, 1]
     """
-
-    # Remove thinking tags
-    response = re.sub(
-        r"<think>.*?</think>", "", response, flags=re.DOTALL
-    ).strip()
+    response = _strip_thinking_tags(response=response)
 
     # Find all numbers (including negative decimals)
     numbers = re.findall(r"-?\d*\.?\d+", response)
@@ -83,3 +91,42 @@ def clean_probability_response(response: str) -> float:
 
     # If no valid probability found, return default
     return 0.0
+
+
+def split_justified_response(response: str) -> Tuple[str, str]:
+    """
+    Split a justified LLM response into the answer and justification
+    parts using " | " as the separator
+
+    Args:
+        * response: Raw response string from the model
+
+    Returns:
+        * Tuple of (answer_part, justification)
+    """
+    cleaned = _strip_thinking_tags(response=response)
+
+    if " | " in cleaned:
+        parts = cleaned.split(" | ", 1)
+        return parts[0].strip(), parts[1].strip()
+    return cleaned, ""
+
+
+def clean_ranking_response(response: str) -> int:
+    """
+    Extract a ranking (1 or 2) from the LLM response
+
+    Args:
+        * response: Raw response string from the model
+
+    Returns:
+        * Ranking as int (1 or 2), or 0 if parsing fails
+    """
+    response = _strip_thinking_tags(response=response)
+
+    # Find the first 1 or 2
+    match = re.search(r"\b([12])\b", response)
+    if match:
+        return int(match.group(1))
+
+    return 0

@@ -3,6 +3,7 @@ import pandas as pd
 from typing import List, Dict
 
 from utils.misc.logging_setup import logger
+from utils.paths.base import DEFAULT_PATHS
 from utils.paths.atlas import AtlasPathConstructor
 
 
@@ -84,7 +85,8 @@ def load_clean_regions(species: str, atlas_path: str) -> List[str]:
         df[0] = df[0].str.replace(r"'", "", regex=True)
         df[0] = df[0].str.lower()
 
-        # Special handling for human atlas
+        # "bankssts" is a Desikan-Killiany atlas abbreviation;
+        # expand for LLM comprehension
         if species.lower() == "human":
             df[0] = df[0].str.replace(
                 "bankssts", "banks of the superior temporal sulcus"
@@ -97,6 +99,38 @@ def load_clean_regions(species: str, atlas_path: str) -> List[str]:
             f"Error loading regions from {atlas_path}: {str(e)}", exc_info=True
         )
         raise
+
+
+def derive_species_from_atlas(atlas_name: str) -> str:
+    """
+    Find which species folder contains the given atlas
+
+    Args:
+        * atlas_name: Atlas filename (without extension)
+
+    Returns:
+        * Species name
+
+    Raises:
+        * FileNotFoundError if atlas not found in any species
+    """
+    base_dir = DEFAULT_PATHS["atlas"]
+
+    # Iterate through species directories
+    for species in os.listdir(base_dir):
+        # Check if it's a directory (species folder)
+        species_dir = os.path.join(base_dir, species)
+        if not os.path.isdir(species_dir):
+            continue
+        # If atlas file exists in this species folder, return the species name
+        atlas_path = f"{species_dir}/{atlas_name}.csv"
+        if os.path.exists(atlas_path):
+            return species
+
+    # If we reach here, the atlas was not found in any species folder
+    raise FileNotFoundError(
+        f"Atlas '{atlas_name}' not found in any species folder"
+    )
 
 
 def load_regions_for_species(

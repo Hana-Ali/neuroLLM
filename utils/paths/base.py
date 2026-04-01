@@ -5,6 +5,7 @@ DEFAULT_PATHS = {
         "base": "prompts",
         "functions": "prompts/functions",
         "probabilities": "prompts/probabilities",
+        "rankings": "prompts/rankings",
     },
     "atlas": "./atlases",
     "env_file": ".env",

@@ -10,8 +10,41 @@ from utils.paths.embeddings import EmbeddingsPathConstructor
 from utils.paths.aggregation import AggregatedResultsPathConstructor
 
 
+def _iter_model_hemispheres(config, analysis_type, with_embeddings=False):
+    """
+    Yield (model, hemisphere, query, agg, emb) for each model/hemisphere
+    combination
+
+    Args:
+        * config: Analysis configuration
+        * analysis_type: Analysis type string
+        * with_embeddings: If True, also construct EmbeddingsPathConstructor
+    """
+    hemispheres = (
+        ["left", "right"]
+        if config.separate_hemispheres
+        else [None]
+    )
+    for hemisphere in hemispheres:
+        for model in config.models:
+            common = dict(
+                model=model, species=config.species,
+                atlas_name=config.atlas_name,
+                analysis_type=analysis_type,
+                hemisphere=hemisphere,
+                template_name=config.prompt_template_name,
+            )
+            query = QueryPathConstructor(**common)
+            agg = AggregatedResultsPathConstructor(**common)
+            emb = (
+                EmbeddingsPathConstructor(**common)
+                if with_embeddings else None
+            )
+            yield model, hemisphere, query, agg, emb
+
+
 def aggregate_function_results(
-    config: Dict[str, Any], analysis_type: str = "functions"
+    config: Dict[str, Any], analysis_type: str = "top-functions"
 ):
     """
     Function aggregation. Creates:
@@ -22,104 +55,98 @@ def aggregate_function_results(
 
     Args:
         * config: Analysis configuration
-        * analysis_type: "functions" or "probabilities"
+        * analysis_type: "top-functions" or "query-functions"
     """
-    hemispheres = ["left", "right"] if config.separate_hemispheres else [None]
+    for model, hemisphere, query, agg, emb in _iter_model_hemispheres(
+        config, analysis_type, with_embeddings=True,
+    ):
+        # Collect all function results for this model/hemisphere
+        all_responses = {}
+        embedding_dfs = []
+        per_func_embedding_dfs = []
 
-    for hemisphere in hemispheres:
-        for model in config.models:
-            # Collect all function results for this model/hemisphere
-            all_responses = {}
-            embedding_dfs = []
+        for region in config.regions:
 
-            for region in config.regions:
-
-                # Get the function response path
-                res_path = (
-                    QueryPathConstructor.construct_query_cleaned_region_path(
-                        model=model,
-                        region=region,
-                        species=config.species,
-                        atlas_name=config.atlas_name,
-                        analysis_type=analysis_type,
-                        hemisphere=hemisphere,
-                        template_name=config.prompt_template_name,
-                    )
+            # Get the function response path
+            res_path = query.construct_query_cleaned_region_path(
+                region=region, trial="final",
+            )
+            if not os.path.exists(res_path):
+                logger.error_status(
+                    f"No query results file found: {res_path}",
+                    exc_info=True,
                 )
-                if not os.path.exists(res_path):
-                    logger.error_status(
-                        f"No query results file found: {res_path}",
-                        exc_info=True,
-                    )
-                    raise
+                raise
 
-                # Load function response
-                with open(res_path) as f:
-                    data = json.load(f)
-                    if model in data:
-                        all_responses[region] = data[model]
+            # Load function response
+            with open(res_path) as f:
+                data = json.load(f)
+                if model in data:
+                    all_responses[region] = data[model]
 
-                # Get the embedding path
-                emb_path = (
-                    EmbeddingsPathConstructor.construct_embeddings_region_path(
-                        model=model,
-                        region=region,
-                        species=config.species,
-                        atlas_name=config.atlas_name,
-                        hemisphere=hemisphere,
-                        template_name=config.prompt_template_name,
-                        analysis_type=analysis_type,
-                    )
+            # Get the combined embedding path
+            emb_path = emb.construct_embeddings_region_path(
+                region=region, trial="final",
+            )
+            if not os.path.exists(emb_path):
+                logger.error_status(
+                    f"No embeddings file found: {emb_path}",
+                    exc_info=True,
                 )
-                if not os.path.exists(emb_path):
-                    logger.error_status(
-                        f"No embeddings file found: {emb_path}", exc_info=True
-                    )
-                    raise
+                raise
 
-                # Load embedding and set region as index
-                df = pd.read_csv(emb_path, index_col=0)
-                embedding_dfs.append(df)
+            # Load combined embedding
+            df = pd.read_csv(emb_path, index_col=0)
+            embedding_dfs.append(df)
 
-            # Get aggregated paths
-            agg_path = AggregatedResultsPathConstructor.construct_aggregated_query_results_path(
-                model=model,
-                species=config.species,
-                atlas_name=config.atlas_name,
-                analysis_type=analysis_type,
-                hemisphere=hemisphere,
-                template_name=config.prompt_template_name,
+            # Load per-function embeddings if available
+            pf_path = emb.construct_per_function_embeddings_region_path(
+                region=region, trial="final",
             )
-            aggemb_path = AggregatedResultsPathConstructor.construct_aggregated_embeddings_path(
-                model=model,
-                species=config.species,
-                atlas_name=config.atlas_name,
-                analysis_type=analysis_type,
-                hemisphere=hemisphere,
-                template_name=config.prompt_template_name,
-            )
-            os.makedirs(os.path.dirname(agg_path), exist_ok=True)
-            os.makedirs(os.path.dirname(aggemb_path), exist_ok=True)
+            if os.path.exists(pf_path):
+                pf_df = pd.read_csv(pf_path, index_col=0)
+                # Add region column for multi-index
+                pf_df.insert(0, "region", region)
+                per_func_embedding_dfs.append(pf_df)
 
-            # Save query responses
-            with open(agg_path, "w") as f:
-                json.dump(all_responses, f, indent=2)
+        # Get aggregated paths
+        agg_path = agg.construct_aggregated_query_results_path()
+        aggemb_path = agg.construct_aggregated_embeddings_path()
+        os.makedirs(os.path.dirname(agg_path), exist_ok=True)
+        os.makedirs(os.path.dirname(aggemb_path), exist_ok=True)
+
+        # Save query responses
+        with open(agg_path, "w") as f:
+            json.dump(all_responses, f, indent=2)
+        logger.processing(
+            f"Saved {len(all_responses)} function responses for "
+            f"{model}/{hemisphere if hemisphere else 'no_separation'}"
+        )
+
+        # Save combined embeddings as CSV
+        all_embeddings_df = pd.concat(embedding_dfs)
+        all_embeddings_df.to_csv(aggemb_path)
+        logger.processing(
+            f"Saved {len(embedding_dfs)} embeddings for "
+            f"{model}/{hemisphere if hemisphere else 'no_separation'}"
+        )
+
+        # Save per-function embeddings if available
+        if per_func_embedding_dfs:
+            aggpf_path = (
+                agg.construct_aggregated_per_function_embeddings_path()
+            )
+            os.makedirs(os.path.dirname(aggpf_path), exist_ok=True)
+            all_pf_df = pd.concat(per_func_embedding_dfs)
+            all_pf_df.to_csv(aggpf_path)
             logger.processing(
-                f"Saved {len(all_responses)} function responses for "
-                f"{model}/{hemisphere if hemisphere else 'no_separation'}"
-            )
-
-            # Save embeddings as CSV
-            all_embeddings_df = pd.concat(embedding_dfs)
-            all_embeddings_df.to_csv(aggemb_path)
-            logger.processing(
-                f"Saved {len(embedding_dfs)} embeddings for "
+                f"Saved per-function embeddings for "
                 f"{model}/{hemisphere if hemisphere else 'no_separation'}"
             )
 
 
 def aggregate_probability_results(
-    config: Dict[str, Any], analysis_type: str = "probabilities"
+    config: Dict[str, Any], analysis_type: str = "query-functions"
 ):
     """
     Probability aggregation. Creates:
@@ -130,97 +157,325 @@ def aggregate_probability_results(
 
     Args:
         * config: Analysis configuration
-        * analysis_type: "functions" or "probabilities"
+        * analysis_type: "top-functions" or "query-functions"
     """
-    hemispheres = ["left", "right"] if config.separate_hemispheres else [None]
+    for model, hemisphere, query, agg, _ in _iter_model_hemispheres(
+        config, analysis_type,
+    ):
+        # Collect probability data
+        all_data = {}
 
-    for hemisphere in hemispheres:
-        for model in config.models:
-            # Collect probability data
-            all_data = {}
+        for region in config.regions:
 
-            for region in config.regions:
-
-                # Get the function response path
-                res_path = QueryPathConstructor.construct_query_region_path(
-                    model=model,
-                    region=region,
-                    species=config.species,
-                    atlas_name=config.atlas_name,
-                    analysis_type=analysis_type,
-                    hemisphere=hemisphere,
-                    template_name=config.prompt_template_name,
+            # Get the function response path
+            res_path = query.construct_query_region_path(
+                region=region, trial="final",
+            )
+            if not os.path.exists(res_path):
+                logger.error_status(
+                    f"No query results file found: {res_path}",
+                    exc_info=True,
                 )
-                if not os.path.exists(res_path):
-                    logger.error_status(
-                        f"No query results file found: {res_path}",
-                        exc_info=True,
+                raise
+
+            # Load function response
+            with open(res_path) as f:
+                region_data = json.load(f)
+                all_data[region] = region_data
+
+        # Create overview DataFrame
+        df_data = []
+        for region in config.regions:
+            if region in all_data:
+                row = {"Region": region}
+                for function in config.functions:
+                    # Cleaner probability extraction
+                    prob_value = (
+                        all_data[region].get(function, {}).get(model)
                     )
-                    raise
+                    row[function] = prob_value
+                df_data.append(row)
 
-                # Load function response
-                with open(res_path) as f:
-                    region_data = json.load(f)
-                    all_data[region] = region_data
+        df = pd.DataFrame(df_data).set_index("Region")
 
-            # Create overview DataFrame
-            df_data = []
-            for region in config.regions:
-                if region in all_data:
-                    row = {"Region": region}
-                    for function in config.functions:
-                        # Cleaner probability extraction
-                        prob_value = (
-                            all_data[region].get(function, {}).get(model)
-                        )
-                        row[function] = prob_value
-                    df_data.append(row)
+        # Get aggregated paths
+        agg_path = agg.construct_aggregated_query_results_path(
+            extension="csv",
+        )
+        os.makedirs(os.path.dirname(agg_path), exist_ok=True)
+        df.to_csv(agg_path)
+        logger.processing(
+            f"Saved probability overview for {model}/"
+            f"{hemisphere if hemisphere else 'no_separation'}"
+        )
 
-            df = pd.DataFrame(df_data).set_index("Region")
-
-            # Get aggregated paths
-            agg_path = AggregatedResultsPathConstructor.construct_aggregated_query_results_path(
-                model=model,
-                species=config.species,
-                atlas_name=config.atlas_name,
-                analysis_type=analysis_type,
-                hemisphere=hemisphere,
-                template_name=config.prompt_template_name,
-                extension="csv",
+        # Save individual function files
+        for function in config.functions:
+            path = agg.construct_individual_function_prob_path(
+                function=function,
             )
-            os.makedirs(os.path.dirname(agg_path), exist_ok=True)
-            df.to_csv(agg_path)
-            logger.processing(
-                f"Saved probability overview for {model}/"
-                f"{hemisphere if hemisphere else 'no_separation'}"
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
+            # Extract function probabilities and drop NaNs
+            func_df = (
+                df[[function]]
+                .dropna()
+                .rename(columns={function: "Probability"})
             )
 
-            # Save individual function files
+            # Save if not empty
+            if not func_df.empty:
+                func_df.to_csv(path)
+                logger.processing(
+                    f"Saved {len(func_df)} probabilities for {function}"
+                )
+
+
+def aggregate_ranking_results(
+    config: Dict[str, Any], analysis_type: str = "rankings"
+):
+    """
+    Ranking aggregation. Creates one CSV per pair showing
+    which region won for each function.
+
+    Output per pair:
+    - {region1}_vs_{region2}/results.csv
+      Columns: Function, Winner, Ranking
+
+    Args:
+        * config: Analysis configuration
+        * analysis_type: "rankings"
+    """
+    for model, _, query, agg, _ in _iter_model_hemispheres(
+        config, analysis_type,
+    ):
+        for r1, r2 in config.pairs:
+            rows = []
             for function in config.functions:
-                path = AggregatedResultsPathConstructor.construct_individual_function_prob_path(
-                    model=model,
-                    species=config.species,
-                    atlas_name=config.atlas_name,
-                    analysis_type=analysis_type,
-                    hemisphere=hemisphere,
-                    function=function,
-                    template_name=config.prompt_template_name,
+                path = query.construct_query_pair_path(
+                    region_1=r1, region_2=r2,
+                    trial="final",
                 )
-                os.makedirs(os.path.dirname(path), exist_ok=True)
+                if not os.path.exists(path):
+                    continue
 
-                # Extract function probabilities and drop NaNs
-                func_df = (
-                    df[[function]]
-                    .dropna()
-                    .rename(columns={function: "Probability"})
+                with open(path) as f:
+                    data = json.load(f)
+
+                ranking = (
+                    data.get(function, {}).get(model)
                 )
+                if ranking is None:
+                    continue
 
-                # Save if not empty
-                if not func_df.empty:
-                    func_df.to_csv(path)
-                    logger.processing(
-                        f"Saved {len(func_df)} probabilities for {function}"
+                winner = r1 if ranking == 1 else r2
+                rows.append({
+                    "Function": function,
+                    "Winner": winner,
+                })
+
+            if not rows:
+                continue
+
+            df = pd.DataFrame(rows).set_index("Function")
+            agg_path = agg.construct_aggregated_pair_results_path(
+                region_1=r1, region_2=r2,
+            )
+            os.makedirs(
+                os.path.dirname(agg_path), exist_ok=True
+            )
+            df.to_csv(agg_path)
+
+            logger.processing(
+                f"Saved pair results for "
+                f"{r1} vs {r2} ({model})"
+            )
+
+
+def aggregate_justifications(
+    config: Dict[str, Any], analysis_type: str
+):
+    """
+    Aggregate justification files into a single JSON per
+    model/hemisphere
+
+    Args:
+        * config: Analysis configuration
+        * analysis_type: "top-functions", "query-functions", or
+            "rankings"
+    """
+    for model, hemisphere, query, agg, _ in _iter_model_hemispheres(
+        config, analysis_type,
+    ):
+        all_justifications = {}
+
+        if analysis_type == "rankings":
+            # Aggregate pair justifications
+            for r1, r2 in config.pairs:
+                just_path = (
+                    query
+                    .construct_query_pair_justification_path(
+                        region_1=r1, region_2=r2,
+                        trial="final",
                     )
+                )
+                if os.path.exists(just_path):
+                    with open(just_path) as f:
+                        data = json.load(f)
+                    pair_key = f"{r1}_vs_{r2}"
+                    all_justifications[pair_key] = data
+        else:
+            # Aggregate region justifications
+            for region in config.regions:
+                just_path = (
+                    query
+                    .construct_query_justification_region_path(
+                        region=region, trial="final",
+                    )
+                )
+                if os.path.exists(just_path):
+                    with open(just_path) as f:
+                        data = json.load(f)
+                    all_justifications[region] = data
+
+        if all_justifications:
+            agg_path = (
+                agg.construct_aggregated_justification_path()
+            )
+            os.makedirs(
+                os.path.dirname(agg_path), exist_ok=True
+            )
+            with open(agg_path, "w") as f:
+                json.dump(
+                    all_justifications, f, indent=2
+                )
+            logger.processing(
+                f"Saved justification aggregation for "
+                f"{model}/{hemisphere or 'no_separation'}"
+            )
+
+
+def aggregate_retest_statistics(
+    config: Dict[str, Any], analysis_type: str
+):
+    """
+    Aggregate retest summary files into overview CSVs
+
+    Args:
+        * config: Analysis configuration
+        * analysis_type: "top-functions", "query-functions", or
+            "rankings"
+    """
+    for model, hemisphere, query, agg, _ in _iter_model_hemispheres(
+        config, analysis_type,
+    ):
+        if analysis_type == "top-functions":
+            # Consistency scores per region
+            scores = {}
+            for region in config.regions:
+                path = query.construct_query_retest_summary_path(
+                    region=region,
+                )
+                if os.path.exists(path):
+                    with open(path) as f:
+                        data = json.load(f)
+                    if model in data:
+                        scores[region] = data[model].get(
+                            "consistency_score", None
+                        )
+
+            if scores:
+                df = pd.DataFrame.from_dict(
+                    scores, orient="index",
+                    columns=["consistency_score"],
+                )
+                df.index.name = "Region"
+                out = agg.construct_aggregated_retest_stats_path(
+                    filename="consistency_scores.csv",
+                )
+                os.makedirs(
+                    os.path.dirname(out), exist_ok=True
+                )
+                df.to_csv(out)
+
+        elif analysis_type == "query-functions":
+            # Mean + std per region x function
+            rows = []
+            for region in config.regions:
+                path = query.construct_query_retest_summary_path(
+                    region=region,
+                )
+                if not os.path.exists(path):
+                    continue
+                with open(path) as f:
+                    data = json.load(f)
+                if model not in data:
+                    continue
+                row = {"Region": region}
+                funcs = data[model].get("functions", {})
+                for func_name, stats in funcs.items():
+                    row[f"{func_name}_mean"] = (
+                        stats.get("mean")
+                    )
+                    row[f"{func_name}_std"] = (
+                        stats.get("std")
+                    )
+                    row[f"{func_name}_min"] = (
+                        stats.get("min")
+                    )
+                    row[f"{func_name}_max"] = (
+                        stats.get("max")
+                    )
+                rows.append(row)
+
+            if rows:
+                df = pd.DataFrame(rows).set_index("Region")
+                out = agg.construct_aggregated_retest_stats_path(
+                    filename="retest_statistics.csv",
+                )
+                os.makedirs(
+                    os.path.dirname(out), exist_ok=True
+                )
+                df.to_csv(out)
+
+        elif analysis_type == "rankings":
+            # Agreement ratios per pair x function
+            rows = []
+            for r1, r2 in config.pairs:
+                pair_name = f"{r1}_vs_{r2}"
+                path = query.construct_query_retest_summary_path(
+                    region=pair_name,
+                )
+                if not os.path.exists(path):
+                    continue
+                with open(path) as f:
+                    data = json.load(f)
+                if model not in data:
+                    continue
+                row = {"Pair": pair_name}
+                funcs = data[model].get(
+                    "functions", {}
+                )
+                for func_name, stats in funcs.items():
+                    row[func_name] = stats.get(
+                        "agreement_ratio"
+                    )
+                rows.append(row)
+
+            if rows:
+                df = pd.DataFrame(rows).set_index("Pair")
+                out = agg.construct_aggregated_retest_stats_path(
+                    filename="retest_agreement.csv",
+                )
+                os.makedirs(
+                    os.path.dirname(out), exist_ok=True
+                )
+                df.to_csv(out)
+
+        logger.processing(
+            f"Saved retest statistics for {model}/"
+            f"{hemisphere or 'no_separation'}"
+        )
 
 
 def aggregate_results(config: Dict[str, Any], analysis_type: str):
@@ -229,14 +484,36 @@ def aggregate_results(config: Dict[str, Any], analysis_type: str):
 
     Args:
         * config: Analysis configuration
-        * analysis_type: "functions" or "probabilities"
+        * analysis_type: "top-functions", "query-functions", or
+            "rankings"
     """
-    if analysis_type == "functions":
-        aggregate_function_results(config=config, analysis_type=analysis_type)
-    elif analysis_type == "probabilities":
+    if analysis_type == "top-functions":
+        aggregate_function_results(
+            config=config, analysis_type=analysis_type
+        )
+    elif analysis_type == "query-functions":
         aggregate_probability_results(
             config=config, analysis_type=analysis_type
         )
+    elif analysis_type == "rankings":
+        aggregate_ranking_results(
+            config=config, analysis_type=analysis_type
+        )
     else:
-        raise ValueError(f"Unknown analysis type: {analysis_type}")
+        raise ValueError(
+            f"Unknown analysis type: {analysis_type}"
+        )
+
+    # Aggregate justifications if --justify was used
+    if config.justify:
+        aggregate_justifications(
+            config=config, analysis_type=analysis_type
+        )
+
+    # Aggregate retest statistics if --retest > 1
+    if config.retest > 1:
+        aggregate_retest_statistics(
+            config=config, analysis_type=analysis_type
+        )
+
     logger.success("Aggregation completed successfully!")

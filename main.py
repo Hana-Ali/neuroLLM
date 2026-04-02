@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from utils.brain_analyser import BrainAnalyser
 from utils.api_clients import APIClientManager
 from utils.misc.model_listing import list_available_models
-from utils.core.function_processing import (
+from utils.core.function_registry import (
     load_function_group,
     load_functions,
 )
@@ -27,10 +27,8 @@ from utils.misc.logging_setup import logger
 
 def _resolve_pairs(args, config: SimpleNamespace):
     """
-    Resolve pairs for rank-pairs. Accepts:
-        * --pairs and --species: use explicit pairs directly
-        * --regions and --species: generate all combinations
-        * --atlas-name: load regions from atlas, generate all combinations
+    Resolve pairs for rank-pairs. Uses explicit --pairs if given,
+    otherwise generates all combinations from config.regions.
 
     Args:
         * args: Parsed command-line arguments
@@ -44,12 +42,8 @@ def _resolve_pairs(args, config: SimpleNamespace):
         ]
         return
 
-    # If regions or atlas provided, use them to generate pairs
-    regions = config.regions or load_regions_for_species(
-        species=config.species,
-        atlas_name=config.atlas_name,
-    )
-    config.pairs = list(combinations(regions, 2))
+    # Generate all region pair combinations
+    config.pairs = list(combinations(config.regions, 2))
 
     # Warn if a large number of pairs to analyze
     n_pairs = len(config.pairs)
@@ -140,6 +134,18 @@ def main():
     # Validate we have sufficient region/atlas information to proceed
     validate_analysis_inputs(args=args)
 
+    # Load regions once: from --regions if given, else from atlas
+    regions = (
+        [r.strip() for r in args.regions.split(",")]
+        if args.regions
+        else None
+    )
+    if regions is None and args.atlas_name:
+        regions = load_regions_for_species(
+            species=args.species,
+            atlas_name=args.atlas_name,
+        )
+
     # Resolve max_tokens default based on --justify
     if args.max_tokens is None:
         args.max_tokens = 512 if args.justify else 256
@@ -167,9 +173,7 @@ def main():
     # Create base config as SimpleNamespace
     config = SimpleNamespace(
         species=args.species,
-        regions=(
-            args.regions.split(",") if args.regions else None
-        ),
+        regions=regions,
         models=model_names,
         functions=None,  # Set later for probabilities/rankings
         pairs=None,  # Set later for rankings
@@ -182,7 +186,8 @@ def main():
         client_manager=client_manager,
         justify=args.justify,
         retest=args.retest,
-        retest_temperature=args.retest_temperature,
+        temperature=args.temperature,
+        consensus_threshold=getattr(args, "consensus_threshold", 0.80),
     )
 
     # Run the appropriate command
@@ -232,13 +237,7 @@ def main():
 
             # Test ranking analysis with dummy model
             logger.info("Testing rankings analysis...")
-            test_regions = (
-                config.regions
-                or load_regions_for_species(
-                    species=config.species,
-                    atlas_name=config.atlas_name,
-                )
-            )[:3]
+            test_regions = config.regions[:3]
             config.pairs = list(combinations(test_regions, 2))
 
             analyser3 = BrainAnalyser(config=config)

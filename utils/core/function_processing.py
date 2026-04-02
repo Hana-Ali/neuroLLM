@@ -41,7 +41,7 @@ def load_functions() -> Tuple[List[str], Dict[str, List[str]]]:
     Load functions and function groups from functions.json
 
     Returns:
-        Tuple containing (list of functions, dictionary of function groups)
+        * Tuple containing (list of functions, dictionary of function groups)
     """
     try:
         with open("functions.json", "r") as f:

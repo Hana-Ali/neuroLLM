@@ -106,8 +106,7 @@ class QueryPathConstructor(BasePathConstructor):
         """
         return (
             f"{self.construct_query_cleaned_results_dir()}/"
-            f"{self._trial_segment(trial=trial)}/{region}/"
-            f"{self.model}.json"
+            f"{self._trial_segment(trial=trial)}/{region}.json"
         )
 
     def construct_query_justification_region_path(

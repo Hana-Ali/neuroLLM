@@ -2,9 +2,10 @@ import re
 from typing import List, Tuple
 
 
-def _strip_thinking_tags(response: str) -> str:
+def _preprocess_response(response: str) -> str:
     """
-    Remove <think>...</think> tags from LLM responses
+    Remove <think>...</think> tags from LLM responses and normalize unicode
+    hyphens/dashes to ASCII hyphen
 
     Args:
         * response: Raw response string from the model
@@ -12,9 +13,13 @@ def _strip_thinking_tags(response: str) -> str:
     Returns:
         * Cleaned response string without <think> tags
     """
-    return re.sub(
+    response = re.sub(
         r"<think>.*?</think>", "", response, flags=re.DOTALL
     ).strip()
+    response = re.sub(
+        r"[\u2010\u2011\u2012\u2013\u2014\u2015]", "-", response
+    )
+    return response
 
 
 def clean_functions_response(response: str) -> List[str]:
@@ -27,7 +32,7 @@ def clean_functions_response(response: str) -> List[str]:
     Returns:
         * List of up to 5 function names
     """
-    response = _strip_thinking_tags(response=response)
+    response = _preprocess_response(response=response)
 
     # Remove introductory text like "Region X is involved in:"
     response = re.sub(
@@ -41,8 +46,8 @@ def clean_functions_response(response: str) -> List[str]:
         flags=re.IGNORECASE | re.DOTALL,
     )
 
-    # Extract from brackets if present
-    bracket_match = re.search(r"\[(.*?)\]", response)
+    # Extract from brackets if present (handle missing closing bracket)
+    bracket_match = re.search(r"\[(.*?)(?:\]|$)", response)
     if bracket_match:
         response = bracket_match.group(1)
 
@@ -51,7 +56,7 @@ def clean_functions_response(response: str) -> List[str]:
 
     # Split by commas and clean
     functions = [
-        f.strip().strip("\"'")
+        f.strip().strip("\"'[]")
         for f in response.split(",")
         if f.strip()
         and f.strip().lower() not in {"unknown", "unclear", "n/a", ""}
@@ -75,7 +80,7 @@ def clean_probability_response(response: str) -> float:
     Returns:
         * Probability as float in [0, 1]
     """
-    response = _strip_thinking_tags(response=response)
+    response = _preprocess_response(response=response)
 
     # Find all numbers (including negative decimals)
     numbers = re.findall(r"-?\d*\.?\d+", response)
@@ -104,7 +109,7 @@ def split_justified_response(response: str) -> Tuple[str, str]:
     Returns:
         * Tuple of (answer_part, justification)
     """
-    cleaned = _strip_thinking_tags(response=response)
+    cleaned = _preprocess_response(response=response)
 
     if " | " in cleaned:
         parts = cleaned.split(" | ", 1)
@@ -122,7 +127,7 @@ def clean_ranking_response(response: str) -> int:
     Returns:
         * Ranking as int (1 or 2), or 0 if parsing fails
     """
-    response = _strip_thinking_tags(response=response)
+    response = _preprocess_response(response=response)
 
     # Find the first 1 or 2
     match = re.search(r"\b([12])\b", response)

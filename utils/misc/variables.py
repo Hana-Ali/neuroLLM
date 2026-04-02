@@ -74,13 +74,13 @@ DEFAULT_RANKING_TEMPLATE = """
     """
 
 DEFAULT_TEMPLATES = {
-    "functions": DEFAULT_FUNCTION_TEMPLATE,
-    "probabilities": DEFAULT_PROBABILITY_TEMPLATE,
+    "top-functions": DEFAULT_FUNCTION_TEMPLATE,
+    "query-functions": DEFAULT_PROBABILITY_TEMPLATE,
     "rankings": DEFAULT_RANKING_TEMPLATE,
 }
 
 JUSTIFY_OUTPUT_FORMATS = {
-    "functions": (
+    "top-functions": (
         "### Expected Output Format\n"
         "    [function_1, function_2, function_3, function_4, function_5]"
         " | {justification}\n\n"
@@ -89,7 +89,7 @@ JUSTIFY_OUTPUT_FORMATS = {
         'Use " | " (space-pipe-space) as the separator between the list '
         "and your justification."
     ),
-    "probabilities": (
+    "query-functions": (
         "### Expected Output Format\n"
         "    0.XX | {justification}\n\n"
         "    Where {justification} is a 1-2 sentence explanation (max 200 "

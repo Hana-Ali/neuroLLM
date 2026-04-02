@@ -3,8 +3,8 @@ from abc import ABC
 DEFAULT_PATHS = {
     "prompts": {
         "base": "prompts",
-        "functions": "prompts/functions",
-        "probabilities": "prompts/probabilities",
+        "top-functions": "prompts/functions",
+        "query-functions": "prompts/probabilities",
         "rankings": "prompts/rankings",
     },
     "atlas": "./atlases",

@@ -51,7 +51,7 @@ def load_custom_template(prompt_type: str, template_name: str) -> str:
     Load a template from file or return default
 
     Args:
-        * prompt_type: Type of analysis ("functions" or "probabilities")
+        * prompt_type: Type of analysis ("top-functions" or "query-functions")
         * template_name: Name of the template file (without .txt)
 
     Returns:
@@ -82,7 +82,7 @@ def _apply_justify(prompt: str, prompt_type: str) -> str:
 
     Args:
         * prompt: Formatted prompt string
-        * prompt_type: "functions", "probabilities", or "rankings"
+        * prompt_type: "top-functions", "query-functions", or "rankings"
 
     Returns:
         * Modified prompt with justify output format
@@ -123,7 +123,7 @@ def generate_prompt(
     Generate analysis prompt for functions, probabilities, or rankings
 
     Args:
-        * prompt_type: "functions", "probabilities", or "rankings"
+        * prompt_type: "top-functions", "query-functions", or "rankings"
         * species: Target species
         * region_name: Brain region name
         * hemisphere: Hemisphere ("left"/"right"/None)
@@ -157,7 +157,7 @@ def generate_prompt(
     )
 
     # Add function for probability and ranking prompts
-    if prompt_type in ("probabilities", "rankings"):
+    if prompt_type in ("query-functions", "rankings"):
         assert function, f"Function must be provided for {prompt_type} prompts"
         format_vars["function"] = function
 

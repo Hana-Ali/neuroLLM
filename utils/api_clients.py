@@ -395,57 +395,72 @@ class APIClientManager:
     # Embedding helpers
     # -------------------------------------------------------------------------
 
-    def get_embeddings(self, text: str, model: str) -> List[float]:
+    def get_embeddings_batch(
+        self, texts: List[str], model: str,
+    ) -> List[List[float]]:
         """
-        Get embeddings for text using the configured embedding provider,
-        or return dummy embeddings in test mode.
+        Get embeddings for multiple texts in a single batch call
 
         Args:
-            * text: Text to embed
+            * texts: List of texts to embed
             * model: Model name (if "dummy", return random embeddings)
 
         Returns:
-            * Embedding vector as a list of floats
+            * List of embedding vectors, one per input text
         """
 
         # Return random embeddings for dummy model
         if model == "dummy":
             dims = EMBEDDING_DIMS.get(self.embedding_provider, 1024)
-            return [random.uniform(-1, 1) for _ in range(dims)]
+            return [
+                [random.uniform(-1, 1) for _ in range(dims)]
+                for _ in texts
+            ]
 
         # Get embeddings from the local provider
         if self.embedding_provider == "local":
-            return self._get_local_embeddings(text=text)
+            return self._get_local_embeddings_batch(texts=texts)
 
         # Get embeddings from OpenAI with retry logic
-        return self.retry_with_backoff(self._get_openai_embeddings, text)
+        return self.retry_with_backoff(
+            self._get_openai_embeddings_batch, texts,
+        )
 
-    def _get_local_embeddings(self, text: str) -> List[float]:
+    def _get_local_embeddings_batch(
+        self, texts: List[str],
+    ) -> List[List[float]]:
         """
-        Get embeddings from the local BAAI/bge-large-en-v1.5 model
+        Batch embed using the local BAAI/bge-large-en-v1.5 model
+        SentenceTransformer.encode() natively accepts a list of strings and
+        returns a list of embeddings in the same order
 
         Args:
-            * text: Text to embed
+            * texts: List of strings to embed
 
         Returns:
-            * Embedding vector as a list of floats
+            * List of embedding vectors, one per input text
         """
-        return self.clients["local_embeddings"].encode(
-            text, normalize_embeddings=True
-        ).tolist()
+        embeddings = self.clients["local_embeddings"].encode(
+            texts, normalize_embeddings=True
+        )
+        return embeddings.tolist()
 
-    def _get_openai_embeddings(self, text: str) -> List[float]:
+    def _get_openai_embeddings_batch(
+        self, texts: List[str],
+    ) -> List[List[float]]:
         """
-        Get embeddings from OpenAI's text-embedding-3-large model
+        Batch embed using OpenAI's text-embedding-3-large. The API accepts a
+        list of strings as input and returns a list of embeddings in the same
+        order
 
         Args:
-            * text: Text to embed
+            * texts: List of strings to embed
 
         Returns:
-            * Embedding vector as a list of floats
+            * List of embedding vectors, one per input text
         """
         client = self.clients["openai_embeddings"]
         response = client.embeddings.create(
-            input=text, model="text-embedding-3-large"
+            input=texts, model="text-embedding-3-large"
         )
-        return response.data[0].embedding
+        return [item.embedding for item in response.data]

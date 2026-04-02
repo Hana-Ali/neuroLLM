@@ -1,71 +1,10 @@
 import os
+import sys
 import pandas as pd
-from typing import List, Dict
+from typing import List
 
 from utils.misc.logging_setup import logger
-from utils.paths.base import DEFAULT_PATHS
 from utils.paths.atlas import AtlasPathConstructor
-
-
-def get_species_atlas(
-    atlas_dir: str, atlas_name: str = None
-) -> Dict[str, List[str]]:
-    """
-    Load atlas data for all available species
-
-    Args:
-        atlas_dir: Directory containing species subdirectories
-        atlas_name: Optional atlas name
-
-    Returns:
-        Dictionary mapping species names to lists of region names
-    """
-    species_atlas = {}
-    try:
-        # Get all subdirectories in atlas_dir
-        # (these are the species directories)
-        species_dirs = [
-            d
-            for d in os.listdir(atlas_dir)
-            if os.path.isdir(os.path.join(atlas_dir, d))
-        ]
-
-        for species in species_dirs:
-            species_dir_path = os.path.join(atlas_dir, species)
-
-            # If atlas_name specified, look for that specific atlas file
-            if atlas_name:
-                atlas_path = os.path.join(
-                    species_dir_path, f"{atlas_name}.csv"
-                )
-                if os.path.exists(atlas_path):
-                    species_atlas[species] = load_clean_regions(
-                        species, atlas_path
-                    )
-                    logger.processing(
-                        f"Loaded {len(species_atlas[species])} "
-                        f"regions for {species} using {atlas_name} atlas"
-                    )
-            # Otherwise, load all available atlas files for this species
-            else:
-                for file in os.listdir(species_dir_path):
-                    if file.endswith(".csv"):
-                        atlas_name = file.split(".")[0]
-                        atlas_path = os.path.join(species_dir_path, file)
-                        species_atlas[species] = load_clean_regions(
-                            species, atlas_path
-                        )
-                        logger.processing(
-                            f"Loaded {len(species_atlas[species])} "
-                            f"regions for {species} from {atlas_name} atlas"
-                        )
-    except Exception as e:
-        logger.error_status(
-            f"Error loading species atlases: {str(e)}", exc_info=True
-        )
-        raise
-
-    return species_atlas
 
 
 def load_clean_regions(species: str, atlas_path: str) -> List[str]:
@@ -101,48 +40,16 @@ def load_clean_regions(species: str, atlas_path: str) -> List[str]:
         raise
 
 
-def derive_species_from_atlas(atlas_name: str) -> str:
-    """
-    Find which species folder contains the given atlas
-
-    Args:
-        * atlas_name: Atlas filename (without extension)
-
-    Returns:
-        * Species name
-
-    Raises:
-        * FileNotFoundError if atlas not found in any species
-    """
-    base_dir = DEFAULT_PATHS["atlas"]
-
-    # Iterate through species directories
-    for species in os.listdir(base_dir):
-        # Check if it's a directory (species folder)
-        species_dir = os.path.join(base_dir, species)
-        if not os.path.isdir(species_dir):
-            continue
-        # If atlas file exists in this species folder, return the species name
-        atlas_path = f"{species_dir}/{atlas_name}.csv"
-        if os.path.exists(atlas_path):
-            return species
-
-    # If we reach here, the atlas was not found in any species folder
-    raise FileNotFoundError(
-        f"Atlas '{atlas_name}' not found in any species folder"
-    )
-
-
 def load_regions_for_species(
     species: str,
     atlas_name: str,
 ) -> List[str]:
     """
-    Load regions for a species, optionally filtering to a specific region
+    Load regions for a species from an atlas file
 
     Args:
         * species: Species name
-        * atlas_name: Optional atlas subfolder to use
+        * atlas_name: Atlas name (filename without extension)
 
     Returns:
         * List of regions
@@ -160,3 +67,42 @@ def load_regions_for_species(
 
     # Load all regions from the atlas
     return load_clean_regions(species=species, atlas_path=atlas_path)
+
+
+def validate_analysis_inputs(args):
+    """
+    Validate that --species and sufficient region/atlas information is
+    provided for the given command. Species is always required since atlas
+    names are not unique across species.
+
+    rank-pairs requires --species and one of:
+        * --atlas-name  (all region combinations used)
+        * --regions     (explicit regions, all combinations used)
+        * --pairs       (explicit pairs)
+
+    All other commands require --species and one of:
+        * --atlas-name
+        * --regions
+
+    Args:
+        * args: Parsed command-line arguments
+
+    Raises:
+        * SystemExit if validation fails
+    """
+    if not args.species:
+        logger.error_status("--species is required")
+        sys.exit(1)
+
+    if args.command == "rank-pairs":
+        if not (args.atlas_name or args.regions or args.pairs):
+            logger.error_status(
+                "For rank-pairs: provide --atlas-name, --regions, or --pairs"
+            )
+            sys.exit(1)
+    else:
+        if not args.atlas_name and not args.regions:
+            logger.error_status(
+                "Either --atlas-name or --regions must be provided"
+            )
+            sys.exit(1)

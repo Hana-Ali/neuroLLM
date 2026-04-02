@@ -1,10 +1,12 @@
 import os
+import re
 import json
 from glob import glob
 from typing import List
+from pathlib import Path
 
 from utils.misc.logging_setup import logger
-from utils.misc.variables import DEFAULT_TEMPLATES
+from utils.misc.variables import DEFAULT_TEMPLATES, JUSTIFY_OUTPUT_FORMATS
 from utils.paths.prompts import PromptPathConstructor
 
 
@@ -73,6 +75,37 @@ def load_custom_template(prompt_type: str, template_name: str) -> str:
         return f.read()
 
 
+def _apply_justify(prompt: str, prompt_type: str) -> str:
+    """
+    Replace the Expected Output Format section and remove the
+    'DO NOT provide explanations' guideline for justified prompts
+
+    Args:
+        * prompt: Formatted prompt string
+        * prompt_type: "functions", "probabilities", or "rankings"
+
+    Returns:
+        * Modified prompt with justify output format
+    """
+    # Remove "DO NOT provide explanations" guideline
+    prompt = re.sub(
+        r"\d+\.\s*\*\*DO NOT\*\*\s*provide explanations.*?\n",
+        "",
+        prompt,
+    )
+
+    # Replace Expected Output Format section
+    justify_format = JUSTIFY_OUTPUT_FORMATS[prompt_type]
+    prompt = re.sub(
+        r"### Expected Output Format\s*\n.*",
+        justify_format,
+        prompt,
+        flags=re.DOTALL,
+    )
+
+    return prompt
+
+
 def generate_prompt(
     prompt_type: str,
     region_name: str,
@@ -80,18 +113,24 @@ def generate_prompt(
     atlas_name: str,
     hemisphere: str = None,
     function: str = None,
+    region_1: str = None,
+    region_2: str = None,
+    justify: bool = False,
     template_name: str = "default",
     save_to_results: bool = False,
 ) -> str:
     """
-    Generate analysis prompt for functions or probabilities
+    Generate analysis prompt for functions, probabilities, or rankings
 
     Args:
-        * prompt_type: "function" or "probability"
+        * prompt_type: "functions", "probabilities", or "rankings"
         * species: Target species
         * region_name: Brain region name
         * hemisphere: Hemisphere ("left"/"right"/None)
-        * function: Function name (required for probability prompts)
+        * function: Function name (for probability/ranking prompts)
+        * region_1: First region (for ranking prompts)
+        * region_2: Second region (for ranking prompts)
+        * justify: Whether to include justification request
         * template_name: Template name to use
         * atlas_name: Atlas name (for saving)
         * save_to_results: Whether to save prompt
@@ -110,20 +149,32 @@ def generate_prompt(
         "region": region_name,
     }
 
-    # Handle hemisphere part - includes the "in the **X** of the" phrase
+    # Handle hemisphere part
     format_vars["hemisphere_part"] = (
         f"in the **{hemisphere} hemisphere** of the"
         if hemisphere
         else "in the"
     )
 
-    # Add function for probability prompts
-    if prompt_type == "probabilities":
-        assert function, "Function must be provided for probability prompts"
+    # Add function for probability and ranking prompts
+    if prompt_type in ("probabilities", "rankings"):
+        assert function, f"Function must be provided for {prompt_type} prompts"
         format_vars["function"] = function
+
+    # Add region pair for ranking prompts
+    if prompt_type == "rankings":
+        assert region_1 and region_2, (
+            "region_1 and region_2 must be provided for ranking prompts"
+        )
+        format_vars["region_1"] = region_1
+        format_vars["region_2"] = region_2
 
     # Format template with all replacements at once
     prompt = template.format(**format_vars)
+
+    # Apply justify modifications if requested
+    if justify:
+        prompt = _apply_justify(prompt=prompt, prompt_type=prompt_type)
 
     # Save if requested
     if save_to_results:
@@ -165,12 +216,14 @@ def save_generated_prompt(
         * function: Function name (for probability prompts)
     """
     # Construct the results prompt path
-    results_prompt_path = PromptPathConstructor.construct_results_prompt_path(
-        prompt_type=prompt_type,
+    prompt_paths = PromptPathConstructor(
         species=species,
         atlas_name=atlas_name,
         hemisphere=hemisphere if hemisphere else "no_separation",
         template_name=template_name,
+    )
+    results_prompt_path = prompt_paths.construct_results_prompt_path(
+        prompt_type=prompt_type,
     )
 
     # Ensure directory exists
@@ -179,9 +232,6 @@ def save_generated_prompt(
 
     # Check if we already have a prompt saved (avoid duplicates)
     if glob(f"{results_dirname}/prompt_*.txt"):
-        # logger.processing(
-        #     f"Prompt already exists in {results_dirname}, skipping save"
-        # )
         return
 
     # Save new prompt
@@ -189,9 +239,7 @@ def save_generated_prompt(
         f.write(prompt)
 
     # Save metadata
-    results_timestamp = results_prompt_path.split("prompt_")[-1].split(".txt")[
-        0
-    ]
+    results_timestamp = Path(results_prompt_path).stem.replace("prompt_", "")
     metadata = {
         "template": template_name,
         "species": species,

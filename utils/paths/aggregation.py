@@ -4,144 +4,103 @@ from utils.paths.base import BasePathConstructor
 class AggregatedResultsPathConstructor(BasePathConstructor):
     """Handles aggregated results path construction"""
 
-    @classmethod
-    def construct_aggregated_query_results_dir(
-        cls,
-        model: str,
-        species: str,
-        atlas_name: str,
-        analysis_type: str,
-        hemisphere: str = None,
-        template_name: str = "default",
-    ):
+    @property
+    def aggregated_query_results_dir(self):
         """
         Construct path for saving aggregated query results
-
-        Args:
-            * model: Model used to generate the analysis
-            * species: Species used for the analysis
-            * atlas_name: Name of the atlas
-            * analysis_type: Type of analysis ("function" or "probability")
-            * hemisphere: Hemisphere used, whether separated or not
-            * template_name: Name of the template chosen (default: "default")
 
         Returns:
             * Path to the aggregated query results dir
         """
-        hemisphere = cls.get_hemisphere_path(hemisphere=hemisphere)
-        base_dir = f"results/aggregated/{analysis_type}"
+        base_dir = f"results/aggregated/{self.analysis_type}"
 
         return (
-            f"{base_dir}/{species}/{atlas_name}/{model}/"
-            f"{template_name}/{hemisphere}"
+            f"{base_dir}/{self.species}/{self._atlas_segment}/"
+            f"{self.model}/{self.template_name}/"
+            f"{self._hemisphere_segment}"
         )
 
-    @classmethod
     def construct_aggregated_query_results_path(
-        cls,
-        model: str,
-        species: str,
-        atlas_name: str,
-        analysis_type: str,
-        hemisphere: str = None,
-        template_name: str = "default",
-        extension: str = "json",
+        self, extension: str = "json",
     ):
         """
         Construct path for saving an aggregated query
 
         Args:
-            * model: Model used to generate the analysis
-            * species: Species used for the analysis
-            * atlas_name: Name of the atlas
-            * analysis_type: Type of analysis ("function" or "probability")
-            * hemisphere: Hemisphere used, whether separated or not
-            * template_name: Name of the template chosen (default: "default")
+            * extension: File extension (default: "json")
 
         Returns:
             * Path to the aggregated json region query
         """
-        aggregated_dir = cls.construct_aggregated_query_results_dir(
-            model=model,
-            species=species,
-            atlas_name=atlas_name,
-            analysis_type=analysis_type,
-            hemisphere=hemisphere,
-            template_name=template_name,
-        )
-        if analysis_type == "functions":
-            filename = "function_distribution"
-        else:
-            filename = "probability_distribution"
-        return f"{aggregated_dir}/{filename}.{extension}"
+        aggregated_dir = self.aggregated_query_results_dir
+        return f"{aggregated_dir}/results_distribution.{extension}"
 
-    @classmethod
     def construct_individual_function_prob_path(
-        cls,
-        model: str,
-        function: str,
-        species: str,
-        atlas_name: str,
-        analysis_type: str,
-        hemisphere: str = None,
-        template_name: str = "default",
+        self, function: str,
     ):
         """
         Construct path for saving an individual function probabilities CSV
 
         Args:
             * function: Function name
-            * model: Model used to generate the analysis
-            * species: Species used for the analysis
-            * atlas_name: Name of the atlas
-            * analysis_type: Type of analysis ("function" or "probability")
-            * hemisphere: Hemisphere used, whether separated or not
-            * template_name: Name of the template chosen (default: "default")
 
         Returns:
             * Path to the individual function probabilities CSV file
         """
-        aggregated_dir = cls.construct_aggregated_query_results_dir(
-            model=model,
-            species=species,
-            atlas_name=atlas_name,
-            analysis_type=analysis_type,
-            hemisphere=hemisphere,
-            template_name=template_name,
+        aggregated_dir = self.aggregated_query_results_dir
+        func_dir = (
+            f"{aggregated_dir}/{function.replace(' ', '_')}"
         )
-        func_dir = f"{aggregated_dir}/{function.replace(' ', '_')}"
         return f"{func_dir}/probabilities.csv"
 
-    @classmethod
-    def construct_aggregated_embeddings_path(
-        cls,
-        model: str,
-        species: str,
-        atlas_name: str,
-        analysis_type: str,
-        hemisphere: str = None,
-        template_name: str = "default",
-    ):
+    def construct_aggregated_embeddings_path(self):
         """
         Construct path for saving an aggregated embeddings CSV
-
-        Args:
-            * model: Model used to generate the analysis
-            * species: Species used for the analysis
-            * atlas_name: Name of the atlas
-            * analysis_type: Type of analysis ("function" or "probability")
-            * hemisphere: Hemisphere used, whether separated or not
-            * template_name: Name of the template chosen (default: "default")
 
         Returns:
             * Path to the aggregated embeddings CSV file
         """
-        aggregated_dir = cls.construct_aggregated_query_results_dir(
-            model=model,
-            species=species,
-            atlas_name=atlas_name,
-            analysis_type=analysis_type,
-            hemisphere=hemisphere,
-            template_name=template_name,
-        )
+        aggregated_dir = self.aggregated_query_results_dir
         return f"{aggregated_dir}/all_embeddings.csv"
+
+    def construct_aggregated_justification_path(self):
+        """
+        Construct path for saving aggregated justifications
+
+        Returns:
+            * Path to the justification distribution JSON
+        """
+        aggregated_dir = self.aggregated_query_results_dir
+        return f"{aggregated_dir}/justification_distribution.json"
+
+    def construct_aggregated_pair_results_path(
+        self, region_1: str, region_2: str,
+    ):
+        """
+        Construct path for saving aggregated results for a single pair
+
+        Args:
+            * region_1: First brain region name
+            * region_2: Second brain region name
+
+        Returns:
+            * Path to the pair results CSV file
+        """
+        aggregated_dir = self.aggregated_query_results_dir
+        pair_dir = f"{region_1}_vs_{region_2}"
+        return f"{aggregated_dir}/{pair_dir}/results.csv"
+
+    def construct_aggregated_retest_stats_path(
+        self, filename: str = "retest_statistics.csv",
+    ):
+        """
+        Construct path for aggregated retest statistics
+
+        Args:
+            * filename: Output filename (default: "retest_statistics.csv")
+
+        Returns:
+            * Path to the retest statistics CSV
+        """
+        aggregated_dir = self.aggregated_query_results_dir
+        return f"{aggregated_dir}/{filename}"

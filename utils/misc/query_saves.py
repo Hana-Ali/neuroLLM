@@ -112,8 +112,9 @@ def _save_function_results(
     functions: list,
     hemisphere: str,
     trial="final",
-    analysis_type: str = "functions",
+    analysis_type: str = "top-functions",
     justification: str = None,
+    per_function_embeddings: list = None,
 ):
     """
     Save all function analysis results
@@ -123,12 +124,14 @@ def _save_function_results(
         * config: Configuration object
         * region: Brain region name
         * response: Raw model response
-        * embedding: Embedding vector
+        * embedding: Embedding vector (combined/mean)
         * functions: Cleaned list of functions
         * hemisphere: Hemisphere string for directory naming
         * trial: int for a specific trial, or "final"
-        * analysis_type: Type of analysis ("functions")
+        * analysis_type: Type of analysis ("top-functions")
         * justification: Justification text (None = not justified)
+        * per_function_embeddings: List of per-function embedding
+            vectors (None = skip saving per-function embeddings)
     """
     query = QueryPathConstructor(
         model=model, species=config.species,
@@ -161,7 +164,7 @@ def _save_function_results(
         filepath=clean_path, new_data={model: functions},
     )
 
-    # Embedding
+    # Combined embedding
     emb_path = emb.construct_embeddings_region_path(
         region=region, trial=trial,
     )
@@ -170,6 +173,19 @@ def _save_function_results(
     df.columns = [f"dim_{i}" for i in range(len(embedding))]
     df.index = [region]
     df.to_csv(emb_path)
+
+    # Per-function embeddings (one row per function)
+    if per_function_embeddings is not None:
+        pf_path = emb.construct_per_function_embeddings_region_path(
+            region=region, trial=trial,
+        )
+        os.makedirs(os.path.dirname(pf_path), exist_ok=True)
+        pf_df = pd.DataFrame(per_function_embeddings)
+        pf_df.columns = [
+            f"dim_{i}" for i in range(len(per_function_embeddings[0]))
+        ]
+        pf_df.index = functions
+        pf_df.to_csv(pf_path)
 
     # Justification
     if justification:
@@ -190,7 +206,7 @@ def _save_probability_results(
     config: Dict[str, Any],
     probability: float,
     trial="final",
-    analysis_type: str = "probabilities",
+    analysis_type: str = "query-functions",
     justification: str = None,
 ):
     """
@@ -204,7 +220,7 @@ def _save_probability_results(
         * config: Configuration object
         * probability: Cleaned probability result
         * trial: int for a specific trial, or "final"
-        * analysis_type: Type of analysis ("probabilities")
+        * analysis_type: Type of analysis ("query-functions")
         * justification: Justification text (None = not justified)
     """
     query = QueryPathConstructor(

@@ -9,10 +9,10 @@ def parse_args():
     # Shared arguments for analysis commands
     analysis_parent = argparse.ArgumentParser(add_help=False)
     analysis_parent.add_argument(
-        "--atlas-name", required=True, help="Atlas name"
-    )
-    analysis_parent.add_argument(
-        "--species", default="human", choices=["human", "macaque", "mouse"]
+        "--species",
+        default=None,
+        choices=["human", "macaque", "mouse"],
+        help="Species to analyze (required)",
     )
     analysis_parent.add_argument(
         "--regions",
@@ -51,8 +51,31 @@ def parse_args():
     analysis_parent.add_argument(
         "--max-tokens",
         type=int,
-        default=256,
-        help="Maximum number of tokens to generate per response",
+        default=None,
+        help=(
+            "Maximum tokens per response (default: 512 with --justify, 256 "
+            "otherwise"
+        ),
+    )
+    analysis_parent.add_argument(
+        "--justify",
+        action="store_true",
+        help="Ask model to provide a justification alongside its answer",
+    )
+    analysis_parent.add_argument(
+        "--retest",
+        type=int,
+        default=1,
+        help=(
+            "Number of times to repeat each query and average results "
+            "(default: 1, no retest)"
+        ),
+    )
+    analysis_parent.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Temperature for model querying (default 0.0)",
     )
 
     # List models
@@ -63,7 +86,10 @@ def parse_args():
         "--filter",
         default="all",
         choices=["all", "free", "paid"],
-        help="Filter models by pricing: 'all' (default), 'free', or 'paid' (sorted cheapest first per provider)",
+        help=(
+            "Filter models by pricing: 'all' (default), 'free', or 'paid'"
+            "(sorted cheapest first per provider)"
+        ),
     )
 
     # Top functions - inherits shared arguments
@@ -71,6 +97,11 @@ def parse_args():
         "top-functions",
         parents=[analysis_parent],
         help="Run top functions analysis",
+    )
+    top_functions_parser.add_argument(
+        "--atlas-name",
+        default=None,
+        help="Atlas name (required when --regions is not provided)",
     )
     top_functions_parser.add_argument(
         "--embedding-provider",
@@ -81,12 +112,26 @@ def parse_args():
         "'local' uses BAAI/bge-large-en-v1.5 via sentence-transformers "
         "(no API key needed, runs on your machine)",
     )
+    top_functions_parser.add_argument(
+        "--consensus-threshold",
+        type=float,
+        default=0.80,
+        help=(
+            "Cosine similarity threshold for semantic clustering when "
+            "computing consensus functions across retests (default: 0.80)"
+        ),
+    )
 
     # Query functions - inherits shared arguments and adds function selection
     query_parser = subparsers.add_parser(
         "query-functions",
         parents=[analysis_parent],
         help="Run query functions analysis",
+    )
+    query_parser.add_argument(
+        "--atlas-name",
+        default=None,
+        help="Atlas name (required when --regions is not provided)",
     )
     query_parser.add_argument(
         "--functions",
@@ -97,10 +142,43 @@ def parse_args():
         help="Predefined function group to load",
     )
 
-    subparsers.add_parser(
+    # Rank pairs - inherits shared arguments and adds pair selection
+    rank_parser = subparsers.add_parser(
+        "rank-pairs",
+        parents=[analysis_parent],
+        help="Rank which of two brain regions is more relevant "
+        "to a function",
+    )
+    rank_parser.add_argument(
+        "--atlas-name",
+        default=None,
+        help=(
+            "Atlas name (required when --regions and --pairs are not provided)"
+        ),
+    )
+    rank_parser.add_argument(
+        "--functions",
+        help="Comma-separated functions to rank pairs for",
+    )
+    rank_parser.add_argument(
+        "--function-group",
+        help="Predefined function group to load",
+    )
+    rank_parser.add_argument(
+        "--pairs",
+        help="Region pairs as 'region1:region2,region3:region4'. "
+        "If omitted, generates all unique pairs from atlas",
+    )
+
+    test_parser = subparsers.add_parser(
         "test",
         parents=[analysis_parent],
         help="Run test workflow",
+    )
+    test_parser.add_argument(
+        "--atlas-name",
+        default=None,
+        help="Atlas name (required when --regions is not provided)",
     )
 
     return parser.parse_args()

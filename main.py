@@ -1,5 +1,6 @@
 import sys
 import random
+from itertools import combinations
 from types import SimpleNamespace
 from argument_parser import parse_args
 
@@ -11,10 +12,105 @@ from dotenv import load_dotenv
 from utils.brain_analyser import BrainAnalyser
 from utils.api_clients import APIClientManager
 from utils.misc.model_listing import list_available_models
-from utils.core.function_processing import load_function_group, load_functions
+from utils.core.function_processing import (
+    load_function_group,
+    load_functions,
+)
 from utils.paths.base import DEFAULT_PATHS
+from utils.misc.atlas import (
+    load_regions_for_species,
+    validate_analysis_inputs,
+)
 
 from utils.misc.logging_setup import logger
+
+
+def _resolve_pairs(args, config: SimpleNamespace):
+    """
+    Resolve pairs for rank-pairs. Accepts:
+        * --pairs and --species: use explicit pairs directly
+        * --regions and --species: generate all combinations
+        * --atlas-name: load regions from atlas, generate all combinations
+
+    Args:
+        * args: Parsed command-line arguments
+        * config: Config object to update with resolved pairs
+    """
+    # If pairs provided directly, parse and use them
+    if args.pairs:
+        config.pairs = [
+            tuple(p.strip().split(":"))
+            for p in args.pairs.split(",")
+        ]
+        return
+
+    # If regions or atlas provided, use them to generate pairs
+    regions = config.regions or load_regions_for_species(
+        species=config.species,
+        atlas_name=config.atlas_name,
+    )
+    config.pairs = list(combinations(regions, 2))
+
+    # Warn if a large number of pairs to analyze
+    n_pairs = len(config.pairs)
+    if n_pairs > 100:
+        total_queries = (
+            n_pairs
+            * len(config.functions)
+            * len(config.models)
+            * config.retest
+        )
+        logger.warning_status(
+            f"Generating {n_pairs} pairs ({total_queries} total queries). "
+            "This may take a while."
+        )
+
+
+def _resolve_functions(args) -> list:
+    """
+    Resolve functions from --function-group, --functions, or defaults
+
+    Args:
+        * args: Parsed command-line arguments
+
+    Returns:
+        * List of functions to analyze
+    """
+
+    # Priority: function group > specified functions > default functions
+    if args.function_group:
+        # Load functions from the specified group
+        functions = load_function_group(
+            group_name=args.function_group
+        )
+        # Validate that the group was found and has functions
+        if not functions:
+            logger.error_status(
+                f"Function group '{args.function_group}' not found."
+            )
+            sys.exit(1)
+        logger.info(
+            f"Using functions from group '{args.function_group}': "
+            f"{', '.join(functions)}"
+        )
+
+    elif args.functions:
+        # Parse functions from the comma-separated list
+        functions = [
+            f.strip() for f in args.functions.split(",")
+        ]
+        logger.info(
+            f"Using specified functions: {', '.join(functions)}"
+        )
+
+    else:
+        # Load default functions if no group or specific functions provided
+        functions, _ = load_functions()
+        logger.info(
+            f"Using default functions: {', '.join(functions)}"
+        )
+
+    return functions
 
 
 def main():
@@ -41,6 +137,13 @@ def main():
     # Determine models to use based on command
     models_input = "dummy" if args.command == "test" else args.models
 
+    # Validate we have sufficient region/atlas information to proceed
+    validate_analysis_inputs(args=args)
+
+    # Resolve max_tokens default based on --justify
+    if args.max_tokens is None:
+        args.max_tokens = 512 if args.justify else 256
+
     # Initialize API clients
     logger.info("Initializing API clients...")
     try:
@@ -64,9 +167,12 @@ def main():
     # Create base config as SimpleNamespace
     config = SimpleNamespace(
         species=args.species,
-        regions=args.regions.split(",") if args.regions else None,
+        regions=(
+            args.regions.split(",") if args.regions else None
+        ),
         models=model_names,
-        functions=None,  # To be set later for probabilities
+        functions=None,  # Set later for probabilities/rankings
+        pairs=None,  # Set later for rankings
         workers=1 if args.command == "test" else args.workers,
         skip_visualization=args.skip_visualization,
         skip_raw_saving=args.skip_raw_saving,
@@ -74,6 +180,9 @@ def main():
         separate_hemispheres=args.separate_hemispheres,
         prompt_template_name=args.prompt_template_name,
         client_manager=client_manager,
+        justify=args.justify,
+        retest=args.retest,
+        retest_temperature=args.retest_temperature,
     )
 
     # Run the appropriate command
@@ -84,34 +193,23 @@ def main():
             analyser.analyze_functions()
 
         elif args.command == "query-functions":
-            # Get functions for probability analysis
-            if args.function_group:
-                functions = load_function_group(group_name=args.function_group)
-                if not functions:
-                    logger.error_status(
-                        f"Function group '{args.function_group}' not found."
-                    )
-                    sys.exit(1)
-                logger.info(
-                    f"Using functions from group '{args.function_group}': "
-                    f"{', '.join(functions)}"
-                )
-            elif args.functions:
-                functions = [f.strip() for f in args.functions.split(",")]
-                logger.info(
-                    f"Using specified functions: {', '.join(functions)}"
-                )
-            else:
-                functions, _ = load_functions()  # Default function set
-                logger.info(f"Using default functions: {', '.join(functions)}")
-
-            config.functions = functions
-
+            # Resolve functions to analyze based on arguments
+            config.functions = _resolve_functions(args=args)
             logger.info(
                 f"Running probabilities analysis for {args.species}..."
             )
             analyser = BrainAnalyser(config=config)
             analyser.analyze_probabilities()
+
+        elif args.command == "rank-pairs":
+            # Resolve functions and pairs to analyze based on arguments
+            config.functions = _resolve_functions(args=args)
+            _resolve_pairs(args=args, config=config)
+            logger.info(
+                f"Running rankings analysis for {args.species}..."
+            )
+            analyser = BrainAnalyser(config=config)
+            analyser.analyze_rankings()
 
         elif args.command == "test":
             logger.info("Running test workflow...")
@@ -123,16 +221,35 @@ def main():
 
             # Test probability analysis with dummy model
             logger.info("Testing probabilities analysis...")
-            config.functions = ["spatial cognition", "consciousness"]
+            config.functions = [
+                "spatial cognition",
+                "consciousness",
+            ]
 
             analyser2 = BrainAnalyser(config=config)
             analyser2.analyze_probabilities()
             logger.success("Probabilities test completed")
 
+            # Test ranking analysis with dummy model
+            logger.info("Testing rankings analysis...")
+            test_regions = (
+                config.regions
+                or load_regions_for_species(
+                    species=config.species,
+                    atlas_name=config.atlas_name,
+                )
+            )[:3]
+            config.pairs = list(combinations(test_regions, 2))
+
+            analyser3 = BrainAnalyser(config=config)
+            analyser3.analyze_rankings()
+            logger.success("Rankings test completed")
+
         else:
             logger.error_status(
                 f"Unknown command: {args.command}, please use from available "
-                "commands: list-models, top-functions, query-functions, test"
+                "commands: list-models, top-functions, query-functions, "
+                "rank-pairs, test"
             )
             sys.exit(1)
 

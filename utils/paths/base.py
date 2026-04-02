@@ -15,6 +15,28 @@ DEFAULT_PATHS = {
 class BasePathConstructor(ABC):
     """Base class for all path constructors"""
 
+    def __init__(
+        self,
+        model: str = None,
+        species: str = None,
+        atlas_name: str = None,
+        analysis_type: str = None,
+        hemisphere: str = None,
+        template_name: str = "default",
+    ):
+        self.model = model
+        self.species = species
+        self.atlas_name = atlas_name
+        self.analysis_type = analysis_type
+        self.hemisphere = hemisphere
+        self.template_name = template_name
+
+        # Pre-compute common path segments
+        self._hemisphere_segment = (
+            f"separation/{hemisphere}" if hemisphere else "no_separation"
+        )
+        self._atlas_segment = atlas_name if atlas_name else "no_atlas"
+
     @staticmethod
     def get_raw_results_dir():
         """
@@ -24,32 +46,6 @@ class BasePathConstructor(ABC):
             * Path to raw results directory
         """
         return "results/raw"
-
-    @staticmethod
-    def get_atlas_path(atlas_name: str = None):
-        """
-        Construct atlas path segment
-
-        Args:
-            * atlas_name: Name of the atlas, or None
-
-        Returns:
-            * Atlas path segment
-        """
-        return atlas_name if atlas_name else "no_atlas"
-
-    @staticmethod
-    def get_hemisphere_path(hemisphere: str = None):
-        """
-        Construct hemisphere path based on provided value
-
-        Args:
-            * hemisphere: Hemisphere used, whether separated or not
-
-        Returns:
-            * Path segment for hemisphere
-        """
-        return f"separation/{hemisphere}" if hemisphere else "no_separation"
 
     @staticmethod
     def cleanup_raw_dir():

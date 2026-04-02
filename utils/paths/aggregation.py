@@ -33,7 +33,7 @@ class AggregatedResultsPathConstructor(BasePathConstructor):
             * Path to the aggregated json region query
         """
         aggregated_dir = self.aggregated_query_results_dir
-        return f"{aggregated_dir}/results_distribution.{extension}"
+        return f"{aggregated_dir}/all_responses.{extension}"
 
     def construct_individual_function_prob_path(
         self, function: str,
@@ -56,12 +56,24 @@ class AggregatedResultsPathConstructor(BasePathConstructor):
     def construct_aggregated_embeddings_path(self):
         """
         Construct path for saving an aggregated embeddings CSV
+        (combined/mean embeddings, one row per region)
 
         Returns:
             * Path to the aggregated embeddings CSV file
         """
         aggregated_dir = self.aggregated_query_results_dir
         return f"{aggregated_dir}/all_embeddings.csv"
+
+    def construct_aggregated_per_function_embeddings_path(self):
+        """
+        Construct path for saving aggregated per-function embeddings
+        (one row per function per region, multi-index)
+
+        Returns:
+            * Path to the per-function embeddings CSV file
+        """
+        aggregated_dir = self.aggregated_query_results_dir
+        return f"{aggregated_dir}/all_per_function_embeddings.csv"
 
     def construct_aggregated_justification_path(self):
         """
